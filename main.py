@@ -175,6 +175,23 @@ def health():
     """Verificação de disponibilidade básica."""
     return {"status": "ok", "service": "fastapi_sandbox", "version": "3.0.0"}
 
+
+@app.get("/db-check", tags=["infra"])
+def db_check():
+    """Pequeno healthcheck que valida a conexão com o banco (SELECT 1).
+    Útil para testar se as variáveis de ambiente e a rede estão corretas no Render.
+    """
+    try:
+        with pool.connection() as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT 1")
+            row = cur.fetchone()
+            cur.close()
+        ok = bool(row and row[0] == 1)
+        return {"db": "ok" if ok else "unexpected result", "result": row}
+    except Exception as e:
+        logger.exception("DB check failed")
+        raise HTTPException(status_code=500, detail={"message": "DB connection failed", "error": str(e)}) from e
 @app.post("/auth/login", response_model=LoginResponse, tags=["auth"], summary="Autenticar usuário (CPF)")
 def login(body: LoginBody):
     """Autentica usuário no Supabase:
