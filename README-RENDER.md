@@ -23,7 +23,20 @@ IMPORTANTE: este arquivo foi adicionado sem alterar o `Readme.md` principal.
   - PGSSLMODE=require
 - Salve e clique em "Manual Deploy" (ou faça um push) para aplicar.
 
-2) Forçar um redeploy (opções)
+2) Gerenciando IPv4 via GitHub Actions
+
+Para ativar/desativar o IPv4 do Supabase via GitHub Actions:
+
+a) Secrets configurados no repositório:
+- SUPABASE_PROJECT_REF: ID do seu projeto no Supabase
+- SUPABASE_ACCESS_TOKEN: sbp_b80925b40cd6b3e3a875dd775cb37f4cc7ae8bba
+
+b) Para executar:
+- Acesse GitHub → Actions → "Supabase IPv4 Add-on"
+- Clique "Run workflow"
+- Escolha: enable (ativar) ou disable (desativar)
+
+3) Forçar um redeploy (opções)
 
 - Push no GitHub (gera redeploy automático):
 

@@ -130,6 +130,14 @@ class LoginResponse(BaseModel):
     nome: str
     userId: str
 
+class UserResponse(BaseModel):
+    """Response model para representar um usuário na listagem."""
+    id: int
+    nome: str
+    login: str
+    active: bool = True
+    bloqueado: bool = False
+
 # -------------------------------------------------------
 # SQLs principais
 # -------------------------------------------------------
@@ -153,6 +161,17 @@ SELECT
 FROM {PGSCHEMA}.f_pessoa p
 WHERE p.fkuser = %(user_id)s
 LIMIT 1;
+"""
+
+SQL_LIST_USERS = f"""
+SELECT
+  u.pk_x_usr AS id,
+  u.name AS nome,
+  u.login,
+  COALESCE(u.active, 1) AS active,
+  COALESCE(u.bloqueado, 0) AS bloqueado
+FROM {PGSCHEMA}.x_usr u
+ORDER BY u.name;
 """
 
 # -------------------------------------------------------
@@ -192,6 +211,25 @@ def db_check():
     except Exception as e:
         logger.exception("DB check failed")
         raise HTTPException(status_code=500, detail={"message": "DB connection failed", "error": str(e)}) from e
+@app.get("/users", response_model=list[UserResponse], tags=["users"], summary="Listar usuários")
+def list_users():
+    """Lista todos os usuários cadastrados no sistema.
+    Retorna informações básicas como id, nome, login e status.
+    """
+    try:
+        with pool.connection() as conn:
+            cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            cur.execute(SQL_LIST_USERS)
+            users = [dict(row) for row in cur.fetchall()]
+            cur.close()
+            return users
+    except Exception as e:
+        logger.exception("Failed to list users")
+        raise HTTPException(
+            status_code=500,
+            detail={"message": "Erro ao listar usuários", "error": str(e)}
+        ) from e
+
 @app.post("/auth/login", response_model=LoginResponse, tags=["auth"], summary="Autenticar usuário (CPF)")
 def login(body: LoginBody):
     """Autentica usuário no Supabase:

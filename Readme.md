@@ -166,6 +166,23 @@ curl -X POST http://localhost:8000/auth/login \
 * **Erro ao subir com `python main.py`** → rode com `uvicorn main:app --reload` (ou ajuste a linha do `uvicorn.run` no `main.py`). 
 * **CORS**: por padrão, o app permite `allow_origins=["*"]`; restrinja conforme necessidade no `main.py`. 
 
+### Conexão com Supabase no Render
+
+Se encontrar problemas de conexão no Render (ex: timeout após 30 segundos), considere usar o Shared Pooler:
+
+```dotenv
+# Configuração para Shared Pooler (recomendado para Render/IPv4)
+PGHOST=aws-1-sa-east-1.pooler.supabase.com
+PGPORT=6543
+PGUSER=postgres.[seu-projeto-id]  # ex: postgres.jnhvlqytvssrbwjpolyq
+```
+
+Notas importantes:
+* O Dedicated Pooler não suporta IPv4 mesmo com o add-on IPv4 ativado
+* O Shared Pooler tem suporte nativo a IPv4 e é recomendado para deploy no Render
+* Use a porta 6543 para connection pooling (não 5432)
+* O usuário deve ter o prefixo `postgres.` seguido do ID do projeto
+
 ---
 
 ## 8) Execução em outra porta
@@ -195,3 +212,6 @@ Se usar `start.sh`, defina `PORT` antes de executá-lo.
 ---
 
 Se quiser, eu já te entrego o `Dockerfile` + `docker-compose.yml` e um `Makefile` com alvos `setup / run / test` seguindo este README.
+
+sbp_3909a7292a682192d2d8f714c24c884dc3e560dd
+jnhvlqytvssrbwjpolyq
