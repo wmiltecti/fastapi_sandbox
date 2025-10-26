@@ -1,0 +1,15 @@
+# .dockerignore
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.sqlite3
+*.db
+*.log
+.venv/
+.env
+dist/
+build/
+.idea/
+.vscode/
+.git/
