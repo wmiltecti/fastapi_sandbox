@@ -1,200 +1,240 @@
-import os, base64, json, time, re
+import os, re, json, time, base64, logging
 from typing import Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
-
+from dotenv import load_dotenv, find_dotenv
 import psycopg
 from psycopg_pool import ConnectionPool
+import hashlib, base64
 
-from dotenv import load_dotenv, find_dotenv
-load_dotenv(dotenv_path=find_dotenv(), override=True)
 
+# importe bcrypt no topo do arquivo (já sugerido antes)
 try:
     import bcrypt
 except Exception:
     bcrypt = None
 
-APP_TITLE = "Licenciamento Ambiental – Auth (Supabase)"
-APP_VERSION = "2.1.0"
-APP_DESCRIPTION = """
-API de autenticação usando **public.f_pessoa** no Postgres (Supabase).  
-Use **/auth/login** para validar credenciais.  
-Ambiente de teste: configure variáveis PGHOST/PGDATABASE/PGUSER/PGPASSWORD/PGPORT/PGSCHEMA.
+from typing import Optional
 
-**Atalhos:**
-- Swagger UI: **`/docs`**
-- ReDoc: **`/redoc`**
-"""
+def verify_and_maybe_migrate_password(user_id: int, input_password: str, stored_password: Optional[str]) -> bool:
+    """
+    Ordem de verificação:
+      1) bcrypt ($2a/$2b/$2y)
+      2) md5 (32 hex)
+      3) sha1-base64 (20 bytes em base64 -> ~28 chars)
+      4) texto claro (fallback)
+    """
+    if not stored_password:
+        return False
 
-tags_metadata = [
-    {"name": "health", "description": "Verificação de disponibilidade do serviço."},
-    {"name": "auth", "description": "Fluxos de autenticação baseados em `f_pessoa`."},
-]
+    sp = stored_password.strip()
+
+    # 1) bcrypt
+    if (bcrypt is not None) and (sp.startswith("$2a$") or sp.startswith("$2b$") or sp.startswith("$2y$")):
+        try:
+            return bcrypt.checkpw(input_password.encode("utf-8"), sp.encode("utf-8"))
+        except Exception:
+            return False
+
+    # 2) MD5 (32 hex)
+    if len(sp) == 32 and all(c in "0123456789abcdefABCDEF" for c in sp):
+        md5hex = hashlib.md5(input_password.encode("utf-8")).hexdigest()
+        if md5hex.lower() == sp.lower():
+            # (opcional) migrar para bcrypt
+            # _migrate_to_bcrypt(user_id, input_password)
+            return True
+        return False
+
+    # 3) SHA-1 base64 (20 bytes → base64 ~28 chars, termina com '=')
+    #    Ex.: 'Urorqwrz+lsu8sExenn5dfjwBUs='
+    try:
+        # tenta decodificar base64 e ver se tem 20 bytes
+        raw = base64.b64decode(sp, validate=True)
+        if len(raw) == 20:
+            sha1_b64 = base64.b64encode(hashlib.sha1(input_password.encode("utf-8")).digest()).decode()
+            if sha1_b64 == sp:
+                # (opcional) migrar para bcrypt
+                # _migrate_to_bcrypt(user_id, input_password)
+                return True
+    except Exception:
+        pass  # não é base64 válido → segue
+
+    # 4) texto claro (fallback de compatibilidade)
+    return sp == input_password
+
+# -------------------------------------------------------
+# Inicialização e configuração geral
+# -------------------------------------------------------
+load_dotenv(find_dotenv(), override=True)
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("fastapi_sandbox")
 
 app = FastAPI(
-    title=APP_TITLE,
-    version=APP_VERSION,
-    description=APP_DESCRIPTION,
-    openapi_tags=tags_metadata,
+    title="Licenciamento Ambiental – Auth (Supabase)",
+    version="3.0.0",
+    description="""
+API de autenticação integrada ao Supabase/Postgres.  
+Fluxo atual: **CPF** via `x_usr`, com nome em `f_pessoa`.  
+Outros perfis (CNPJ, PASSAPORTE, ESTRANGEIRO) já previstos no contrato e liberados evolutivamente.
+""",
     swagger_ui_parameters={"persistAuthorization": True},
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # ajuste conforme necessidade
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# --------- MODELOS ----------
-class ErrorResponse(BaseModel):
-    message: str = Field(..., examples=["Credenciais inválidas."])
+# -------------------------------------------------------
+# Conexão ao banco (Supabase/Postgres)
+# -------------------------------------------------------
+PGHOST = os.getenv("PGHOST")
+PGDATABASE = os.getenv("PGDATABASE", "postgres")
+PGUSER = os.getenv("PGUSER", "postgres")
+PGPASSWORD = os.getenv("PGPASSWORD")
+PGPORT = int(os.getenv("PGPORT", "5432"))
+PGSCHEMA = os.getenv("PGSCHEMA", "public")
+
+os.environ.setdefault("PGSSLMODE", "require")
+
+if not (PGHOST and PGPASSWORD):
+    raise RuntimeError("Defina PGHOST e PGPASSWORD no ambiente (.env).")
+
+DSN = f"host={PGHOST} port={PGPORT} dbname={PGDATABASE} user={PGUSER} password={PGPASSWORD} sslmode={os.getenv('PGSSLMODE','require')}"
+
+pool = ConnectionPool(conninfo=DSN, min_size=1, max_size=10, kwargs={"autocommit": True})
+
+# -------------------------------------------------------
+# Modelos de dados (Swagger)
+# -------------------------------------------------------
+TIPOS_VALIDOS = {"CPF", "CNPJ", "PASSAPORTE", "ESTRANGEIRO"}
 
 class LoginBody(BaseModel):
-    login: str = Field(..., examples=["123.456.789-00", "11.222.333/0001-44", "PASS1234"])
-    senha: str = Field(..., examples=["minhasenha"])
+    login: str = Field(..., description="Documento informado no login")
+    senha: str = Field(..., description="Senha do usuário")
     tipoDeIdentificacao: Optional[str] = Field(
-        None, examples=["CPF", "CNPJ", "PASSAPORTE", "ESTRANGEIRO"]
+        None,
+        description="CPF | CNPJ | PASSAPORTE | ESTRANGEIRO",
+        examples=["CPF", "CNPJ", "PASSAPORTE", "ESTRANGEIRO"],
     )
 
 class LoginResponse(BaseModel):
-    token: str = Field(..., description="Token mock (base64).")
-    nome: Optional[str] = Field(None, examples=["Fulano de Tal"])
-    perfil: Optional[str] = Field(None, examples=["ADMIN"])
-    userId: str = Field(..., examples=["1"])
+    token: str
+    nome: str
+    userId: str
 
-# --------- HELPERS ----------
-def norm(s: str) -> str:
-    return re.sub(r"[^0-9A-Za-z]", "", (s or "")).upper()
-
-def issue_mock_token(payload: dict) -> str:
-    payload = dict(payload)
-    payload["iat"] = int(time.time())
-    raw = json.dumps(payload).encode("utf-8")
-    return base64.urlsafe_b64encode(raw).decode("utf-8").rstrip("=")
-
-# --------- ENV / PARAMS ----------
-PGHOST=os.getenv("PGHOST")
-PGDATABASE=os.getenv("PGDATABASE", "postgres")
-PGUSER=os.getenv("PGUSER", "postgres")
-PGPASSWORD=os.getenv("PGPASSWORD")
-PGPORT=int(os.getenv("PGPORT", "5432"))
-PGSCHEMA=os.getenv("PGSCHEMA", "public")
-PERSON_TABLE=os.getenv("PERSON_TABLE", "f_pessoa")
-
-COL_ID=os.getenv("PERSON_COL_ID", "id")
-COL_NOME=os.getenv("PERSON_COL_NOME", "nome")
-COL_PERFIL=os.getenv("PERSON_COL_PERFIL", "perfil")
-COL_TIPO=os.getenv("PERSON_COL_TIPO", "tipo")
-COL_CPF=os.getenv("PERSON_COL_CPF", "cpf")
-COL_CNPJ=os.getenv("PERSON_COL_CNPJ", "cnpj")
-COL_PASSAPORTE=os.getenv("PERSON_COL_PASSAPORTE", "passaporte")
-COL_ESTRANGEIRO=os.getenv("PERSON_COL_ESTRANGEIRO", "identificacao_estrangeiro")
-COL_SENHA=os.getenv("PERSON_COL_SENHA", "senha")
-COL_SENHA_HASH=os.getenv("PERSON_COL_SENHA_HASH", "senha_hash")
-
-if not (PGHOST and PGPASSWORD):
-    raise RuntimeError("Defina PGHOST e PGPASSWORD no ambiente.")
-os.environ.setdefault("PGSSLMODE", "require")  # Supabase precisa SSL
-
-DB_DSN = (
-    f"host={PGHOST} port={PGPORT} dbname={PGDATABASE} user={PGUSER} password={PGPASSWORD} sslmode={os.getenv('PGSSLMODE')}"
-)
-
-pool = ConnectionPool(
-    conninfo=DB_DSN,
-    min_size=1,
-    max_size=10,
-    kwargs={"autocommit": True}
-)
-
-# --------- QUERIES ----------
-SQL_FIND_USER = f"""
+# -------------------------------------------------------
+# SQLs principais
+# -------------------------------------------------------
+SQL_AUTH_X_USR = f"""
 SELECT
-  {COL_ID} AS id,
-  {COL_NOME} AS nome,
-  {COL_PERFIL} AS perfil,
-  {COL_TIPO} AS tipo,
-  {COL_CPF} AS cpf,
-  {COL_CNPJ} AS cnpj,
-  {COL_PASSAPORTE} AS passaporte,
-  {COL_ESTRANGEIRO} AS identificacao_estrangeiro,
-  {COL_SENHA} AS senha,
-  {COL_SENHA_HASH} AS senha_hash
-FROM {PGSCHEMA}.{PERSON_TABLE}
-WHERE
-  regexp_replace(upper(coalesce({COL_CPF}, '')), '[^0-9A-Z]', '', 'g') = %(nlogin)s
-  OR regexp_replace(upper(coalesce({COL_CNPJ}, '')), '[^0-9A-Z]', '', 'g') = %(nlogin)s
-  OR regexp_replace(upper(coalesce({COL_PASSAPORTE}, '')), '[^0-9A-Z]', '', 'g') = %(nlogin)s
-  OR regexp_replace(upper(coalesce({COL_ESTRANGEIRO}, '')), '[^0-9A-Z]', '', 'g') = %(nlogin)s
+  u.pk_x_usr AS user_id,
+  u.name     AS user_name,
+  u.login    AS user_login,
+  u.password AS user_password,
+  COALESCE(u.active,1)    AS active,
+  COALESCE(u.bloqueado,0) AS bloqueado
+FROM {PGSCHEMA}.x_usr u
+WHERE regexp_replace(u.login, '\\D', '', 'g') = %(login_digits)s
 LIMIT 1;
 """
 
-def find_user_in_db(login: str):
-    nlogin = norm(login)
-    with pool.connection() as conn:
-        with conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
-            cur.execute(SQL_FIND_USER, {"nlogin": nlogin})
-            return cur.fetchone()
+SQL_PERSON_NAME = f"""
+SELECT
+  p.fkuser,
+  COALESCE(NULLIF(p.nomepessoa,''), NULLIF(p.nome,''), NULLIF(p.nomerazao,''), NULLIF(p.razaosocial,'')) AS display_name
+FROM {PGSCHEMA}.f_pessoa p
+WHERE p.fkuser = %(user_id)s
+LIMIT 1;
+"""
 
-def verify_password(input_password: str, row: dict) -> bool:
-    hash_from_db = row.get("senha_hash")
-    plain_from_db = row.get("senha")
+# -------------------------------------------------------
+# Funções auxiliares
+# -------------------------------------------------------
+def only_digits(s: str) -> str:
+    return re.sub(r"\D+", "", (s or ""))
 
-    if hash_from_db:
-        if not bcrypt:
-            return False
-        try:
-            return bcrypt.checkpw(input_password.encode("utf-8"), hash_from_db.encode("utf-8"))
-        except Exception:
-            return False
-    return (plain_from_db or "") == input_password
+def issue_token(payload: dict) -> str:
+    payload = dict(payload)
+    payload["iat"] = int(time.time())
+    raw = json.dumps(payload).encode()
+    return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
-# --------- ENDPOINTS ----------
-@app.get("/health", tags=["health"])
+# -------------------------------------------------------
+# Endpoints
+# -------------------------------------------------------
+@app.get("/health", tags=["infra"])
 def health():
-    return {"status": "ok", "service": "supabase-api", "version": APP_VERSION}
+    """Verificação de disponibilidade básica."""
+    return {"status": "ok", "service": "fastapi_sandbox", "version": "3.0.0"}
 
-@app.post(
-    "/auth/login",
-    response_model=LoginResponse,
-    responses={
-        400: {"model": ErrorResponse, "description": "Requisição inválida"},
-        401: {"model": ErrorResponse, "description": "Credenciais inválidas"},
-    },
-    tags=["auth"],
-    summary="Autenticar usuário pelo documento",
-    description="""
-Tenta autenticar por **CPF**, **CNPJ**, **PASSAPORTE** ou **Identificação de Estrangeiro** (o que casar primeiro).  
-Senha pode ser validada por **hash Bcrypt** (`senha_hash`) ou **texto claro** (`senha`).
-""",
-)
+@app.post("/auth/login", response_model=LoginResponse, tags=["auth"], summary="Autenticar usuário (CPF)")
 def login(body: LoginBody):
-    row = find_user_in_db(body.login)
-    if not row:
+    """Autentica usuário no Supabase:
+    - Usa x_usr (login, password)
+    - Busca nome em f_pessoa.fkuser
+    - Tipos previstos: CPF, CNPJ, PASSAPORTE, ESTRANGEIRO (escopo atual: CPF)
+    """
+    tipo = (body.tipoDeIdentificacao or "CPF").upper()
+    if tipo not in TIPOS_VALIDOS:
+        raise HTTPException(status_code=400, detail={"message": "tipoDeIdentificacao inválido."})
+
+    if tipo != "CPF":
+        raise HTTPException(status_code=422, detail={"message": f"Autenticação por {tipo} será habilitada nas próximas etapas."})
+
+    # --- normaliza login
+    login_digits = only_digits(body.login)
+    if not login_digits:
+        raise HTTPException(status_code=400, detail={"message": "Informe um CPF válido."})
+
+    # --- autenticação em x_usr
+    try:
+        with pool.connection() as conn, conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+            cur.execute(SQL_AUTH_X_USR, {"login_digits": login_digits})
+            u = cur.fetchone()
+    except Exception as e:
+        logger.exception("Erro ao consultar x_usr")
+        raise HTTPException(status_code=500, detail={"message": "Erro interno de banco."}) from e
+
+    if not u:
+        raise HTTPException(status_code=401, detail={"message": "Credenciais inválidas."})
+    if int(u["active"]) == 0 or int(u.get("bloqueado", 0)) == 1:
+        raise HTTPException(status_code=403, detail={"message": "Usuário inativo/bloqueado."})
+    stored_pw = u.get("user_password")
+    if not verify_and_maybe_migrate_password(int(u["user_id"]), body.senha, stored_pw):
         raise HTTPException(status_code=401, detail={"message": "Credenciais inválidas."})
 
-    if not verify_password(body.senha, row):
-        raise HTTPException(status_code=401, detail={"message": "Credenciais inválidas."})
 
-    tipo = (row.get("tipo") or "").upper()
-    if tipo == "ESTRANGEIRO":
-        if body.tipoDeIdentificacao not in {"CNPJ", "CPF", "PASSAPORTE", "ESTRANGEIRO"}:
-            raise HTTPException(status_code=400, detail={"message": "tipoDeIdentificacao obrigatório para estrangeiro."})
-        token = issue_mock_token({"sub": str(row.get("id") or body.login), "tipo": tipo, "tdi": body.tipoDeIdentificacao})
-    else:
-        token = issue_mock_token({"sub": str(row.get("id") or body.login), "tipo": tipo})
+    user_id = int(u["user_id"])
+
+    # --- nome para exibição em f_pessoa
+    try:
+        with pool.connection() as conn, conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+            cur.execute(SQL_PERSON_NAME, {"user_id": user_id})
+            p = cur.fetchone()
+    except Exception as e:
+        logger.exception("Erro ao buscar nome em f_pessoa")
+        raise HTTPException(status_code=500, detail={"message": "Erro interno de banco."}) from e
+
+    display_name = (p or {}).get("display_name") or (u["user_name"] or u["user_login"])
+
+    token = issue_token({"sub": str(user_id), "tipo": tipo})
 
     return {
         "token": token,
-        "nome": row.get("nome"),
-        "perfil": row.get("perfil"),
-        "userId": str(row.get("id") or body.login)
+        "nome": display_name,
+        "userId": str(user_id)
     }
 
+# -------------------------------------------------------
+# Execução local
+# -------------------------------------------------------
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", "8000"))
-    uvicorn.run("main_supabase:app", host="0.0.0.0", port=port, reload=False)
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)

@@ -1,0 +1,25 @@
+services:
+  # Service for the FastAPI application
+  - type: web
+    name: fastapi-sandbox
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: PORT
+        value: 8000
+      # Database configuration - você precisará configurar estas variáveis no dashboard do Render
+      - key: PGHOST
+        sync: false  # Significa que o valor será definido no dashboard
+      - key: PGDATABASE
+        sync: false
+      - key: PGUSER
+        sync: false
+      - key: PGPASSWORD
+        sync: false
+      - key: PGPORT
+        sync: false
+      - key: PGSCHEMA
+        sync: false
