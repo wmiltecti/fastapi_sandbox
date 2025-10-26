@@ -138,6 +138,17 @@ class UserResponse(BaseModel):
     active: bool = True
     bloqueado: bool = False
 
+class PessoaResponse(BaseModel):
+    """Response model para representar uma pessoa na listagem."""
+    id: int = Field(..., alias='pkpessoa')
+    nome: str
+    tipo: Optional[int] = None
+    cpf: Optional[str] = None
+    email: Optional[str] = None
+    telefone: Optional[str] = None
+    cidade: Optional[str] = None
+    estado: Optional[int] = Field(None, alias='fkestado')
+
 # -------------------------------------------------------
 # SQLs principais
 # -------------------------------------------------------
@@ -165,13 +176,27 @@ LIMIT 1;
 
 SQL_LIST_USERS = f"""
 SELECT
-  u.pk_x_usr AS id,
-  u.name AS nome,
-  u.login,
-  COALESCE(u.active, 1) AS active,
-  COALESCE(u.bloqueado, 0) AS bloqueado
-FROM {PGSCHEMA}.x_usr u
-ORDER BY u.name;
+  pk_x_usr as id,
+  name as nome,
+  login,
+  COALESCE(active, 1)::boolean as active,
+  COALESCE(bloqueado, 0)::boolean as bloqueado
+FROM {PGSCHEMA}.x_usr
+ORDER BY name;
+"""
+
+SQL_LIST_PESSOAS = f"""
+SELECT
+  p.pkpessoa,
+  COALESCE(NULLIF(p.nomepessoa,''), NULLIF(p.nome,''), NULLIF(p.nomerazao,''), NULLIF(p.razaosocial,'')) AS nome,
+  p.tipo,
+  p.cpf,
+  p.email,
+  p.telefone,
+  p.cidade,
+  p.fkestado
+FROM {PGSCHEMA}.f_pessoa p
+ORDER BY p.nome;
 """
 
 # -------------------------------------------------------
@@ -218,11 +243,41 @@ def list_users():
     """
     try:
         with pool.connection() as conn:
-            cur = conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+            cur = conn.cursor()
+            logger.info("Executando consulta de usuários...")
             cur.execute(SQL_LIST_USERS)
-            users = [dict(row) for row in cur.fetchall()]
+            columns = [desc[0] for desc in cur.description]
+            users = [dict(zip(columns, row)) for row in cur.fetchall()]
             cur.close()
+            logger.info(f"Consulta retornou {len(users)} usuários")
             return users
+    except Exception as e:
+        logger.error(f"Erro detalhado ao listar usuários: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Erro ao consultar usuários: {str(e)}"
+        )
+    except Exception as e:
+        logger.error(f"Erro ao listar usuários: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao consultar usuários")
+
+
+@app.get("/pessoas", response_model=list[PessoaResponse], tags=["pessoas"], summary="Listar pessoas")
+def list_pessoas():
+    """Lista todas as pessoas cadastradas no sistema.
+    Retorna informações como id, nome, tipo, cpf, contatos e localização.
+    """
+    try:
+        with pool.connection() as conn:
+            cur = conn.cursor()
+            cur.execute(SQL_LIST_PESSOAS)
+            columns = [desc[0] for desc in cur.description]
+            pessoas = [dict(zip(columns, row)) for row in cur.fetchall()]
+            cur.close()
+            return pessoas
+    except Exception as e:
+        logger.error(f"Erro ao listar pessoas: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao consultar pessoas")
     except Exception as e:
         logger.exception("Failed to list users")
         raise HTTPException(
