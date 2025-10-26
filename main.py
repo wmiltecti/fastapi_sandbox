@@ -199,6 +199,21 @@ FROM {PGSCHEMA}.f_pessoa p
 ORDER BY p.nome;
 """
 
+SQL_GET_PESSOA_BY_CPF = f"""
+SELECT
+  p.pkpessoa,
+  COALESCE(NULLIF(p.nomepessoa,''), NULLIF(p.nome,''), NULLIF(p.nomerazao,''), NULLIF(p.razaosocial,'')) AS nome,
+  p.tipo,
+  p.cpf,
+  p.email,
+  p.telefone,
+  p.cidade,
+  p.fkestado
+FROM {PGSCHEMA}.f_pessoa p
+WHERE regexp_replace(p.cpf, '\\D', '', 'g') = %(cpf_digits)s
+LIMIT 1;
+"""
+
 # -------------------------------------------------------
 # Funções auxiliares
 # -------------------------------------------------------
@@ -275,6 +290,48 @@ def list_pessoas():
             pessoas = [dict(zip(columns, row)) for row in cur.fetchall()]
             cur.close()
             return pessoas
+    except Exception as e:
+        logger.error(f"Erro ao listar pessoas: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao consultar pessoas")
+
+@app.get("/pessoas/{cpf}", response_model=PessoaResponse, tags=["pessoas"], summary="Buscar pessoa por CPF")
+def get_pessoa_by_cpf(cpf: str):
+    """Busca uma pessoa específica pelo CPF.
+    O CPF pode ser informado com ou sem máscara (ex: '123.456.789-00' ou '12345678900').
+    """
+    # Remove qualquer caractere não numérico do CPF
+    cpf_digits = only_digits(cpf)
+    
+    if len(cpf_digits) != 11:
+        raise HTTPException(
+            status_code=400,
+            detail="CPF inválido. Deve conter 11 dígitos."
+        )
+    
+    try:
+        with pool.connection() as conn:
+            cur = conn.cursor()
+            cur.execute(SQL_GET_PESSOA_BY_CPF, {"cpf_digits": cpf_digits})
+            row = cur.fetchone()
+            
+            if not row:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Pessoa não encontrada com o CPF informado."
+                )
+            
+            columns = [desc[0] for desc in cur.description]
+            pessoa = dict(zip(columns, row))
+            cur.close()
+            return pessoa
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions (404, etc)
+    except Exception as e:
+        logger.error(f"Erro ao buscar pessoa por CPF: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Erro ao consultar pessoa"
+        )
     except Exception as e:
         logger.error(f"Erro ao listar pessoas: {e}")
         raise HTTPException(status_code=500, detail="Erro ao consultar pessoas")
