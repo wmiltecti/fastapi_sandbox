@@ -4,5 +4,6 @@ python-multipart
 psycopg-pool
 bcrypt
 python-dotenv
+psycopg 
 psycopg2
 
