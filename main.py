@@ -420,6 +420,84 @@ WHERE regexp_replace(cpf, '\\D', '', 'g') = %(cpf_digits)s
 LIMIT 1;
 """
 
+SQL_GET_PESSOA_BY_CNPJ = f"""
+SELECT
+  pkpessoa,
+  fkuser,
+  tipo,
+  status,
+  cpf,
+  nome,
+  datanascimento,
+  naturalidade,
+  nacionalidade,
+  estadocivil,
+  sexo,
+  rg,
+  orgaoemissor,
+  fkestadoemissor,
+  fkprofissao,
+  passaporte,
+  datapassaporte,
+  cnpj,
+  razaosocial,
+  nomefantasia,
+  inscricaoestadual,
+  fkufinscricaoestadual,
+  datainicioatividade,
+  inscricaomunicipal,
+  cnaefiscal,
+  simplesnacional,
+  crccontador,
+  fknaturezajuridica,
+  fkporte,
+  identificacaoestrangeira,
+  tipoidentificacaoestrangeira,
+  telefone,
+  telefonealternativo1,
+  telefonealternativo2,
+  email,
+  emailalternativo,
+  fax,
+  faxalternativo,
+  complemento,
+  cep,
+  cidade,
+  provincia,
+  fkmunicipio,
+  fkestado,
+  fkpais,
+  statusregimeespecial,
+  dataregimeespecial,
+  periodoregimeespecial,
+  periodopagamentoregimeespecial,
+  fkcentroinformacao,
+  datacadastro,
+  dtype,
+  numeroconselhoprofissional,
+  fkconselhoprofissional,
+  fkestadoemissorconselhoprofissional,
+  caixapostal,
+  endereco,
+  profissao,
+  situacaopessoajuridica,
+  porteempresa,
+  filiacaomae,
+  filiacaopai,
+  conjuge_id,
+  matricula,
+  nomepessoa,
+  numeroidentificacao,
+  nomerazao,
+  permitirvercarscadastrante,
+  cargo,
+  dataultimaalteracao,
+  permitirvercarrt
+FROM {PGSCHEMA}.f_pessoa
+WHERE regexp_replace(cnpj, '\\D', '', 'g') = %(cnpj_digits)s
+LIMIT 1;
+"""
+
 # -------------------------------------------------------
 # Funções auxiliares
 # -------------------------------------------------------
@@ -500,7 +578,7 @@ def list_pessoas():
         logger.error(f"Erro ao listar pessoas: {e}")
         raise HTTPException(status_code=500, detail="Erro ao consultar pessoas")
 
-@app.get("/pessoas/{cpf}", response_model=PessoaResponse, tags=["pessoas"], summary="Buscar pessoa por CPF")
+@app.get("/pessoas/cpf/{cpf}", response_model=PessoaResponse, tags=["pessoas"], summary="Buscar pessoa por CPF")
 def get_pessoa_by_cpf(cpf: str):
     """Busca uma pessoa específica pelo CPF.
     O CPF pode ser informado com ou sem máscara (ex: '123.456.789-00' ou '12345678900').
@@ -534,6 +612,45 @@ def get_pessoa_by_cpf(cpf: str):
         raise  # Re-raise HTTP exceptions (404, etc)
     except Exception as e:
         logger.error(f"Erro ao buscar pessoa por CPF: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Erro ao consultar pessoa"
+        )
+
+@app.get("/pessoas/cnpj/{cnpj}", response_model=PessoaResponse, tags=["pessoas"], summary="Buscar pessoa por CNPJ")
+def get_pessoa_by_cnpj(cnpj: str):
+    """Busca uma pessoa específica pelo CNPJ.
+    O CNPJ pode ser informado com ou sem máscara (ex: '12.345.678/0001-90' ou '12345678000190').
+    """
+    # Remove qualquer caractere não numérico do CNPJ
+    cnpj_digits = only_digits(cnpj)
+    
+    if len(cnpj_digits) != 14:
+        raise HTTPException(
+            status_code=400,
+            detail="CNPJ inválido. Deve conter 14 dígitos."
+        )
+    
+    try:
+        with pool.connection() as conn:
+            cur = conn.cursor()
+            cur.execute(SQL_GET_PESSOA_BY_CNPJ, {"cnpj_digits": cnpj_digits})
+            row = cur.fetchone()
+            
+            if not row:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Pessoa não encontrada com o CNPJ informado."
+                )
+            
+            columns = [desc[0] for desc in cur.description]
+            pessoa = dict(zip(columns, row))
+            cur.close()
+            return pessoa
+    except HTTPException:
+        raise  # Re-raise HTTP exceptions (404, etc)
+    except Exception as e:
+        logger.error(f"Erro ao buscar pessoa por CNPJ: {e}")
         raise HTTPException(
             status_code=500,
             detail="Erro ao consultar pessoa"
