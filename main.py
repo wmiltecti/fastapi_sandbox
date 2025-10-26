@@ -4,10 +4,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv, find_dotenv
-import psycopg
+import psycopg2
+import psycopg2.extras
 from psycopg_pool import ConnectionPool
 import hashlib, base64
-
+import os
+import psycopg2.extras
 
 # importe bcrypt no topo do arquivo (já sugerido antes)
 try:
@@ -194,9 +196,15 @@ def login(body: LoginBody):
 
     # --- autenticação em x_usr
     try:
-        with pool.connection() as conn, conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+        with pool.connection() as conn:
+            cur = conn.cursor()
             cur.execute(SQL_AUTH_X_USR, {"login_digits": login_digits})
-            u = cur.fetchone()
+            row = cur.fetchone()
+            if row:
+                u = dict(zip([desc[0] for desc in cur.description], row))
+            else:
+                u = None
+            cur.close()
     except Exception as e:
         logger.exception("Erro ao consultar x_usr")
         raise HTTPException(status_code=500, detail={"message": "Erro interno de banco."}) from e
@@ -214,9 +222,15 @@ def login(body: LoginBody):
 
     # --- nome para exibição em f_pessoa
     try:
-        with pool.connection() as conn, conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
+        with pool.connection() as conn:
+            cur = conn.cursor()
             cur.execute(SQL_PERSON_NAME, {"user_id": user_id})
-            p = cur.fetchone()
+            row = cur.fetchone()
+            if row:
+                p = dict(zip([desc[0] for desc in cur.description], row))
+            else:
+                p = None
+            cur.close()
     except Exception as e:
         logger.exception("Erro ao buscar nome em f_pessoa")
         raise HTTPException(status_code=500, detail={"message": "Erro interno de banco."}) from e
