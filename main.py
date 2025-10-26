@@ -1,5 +1,6 @@
 import os, re, json, time, base64, logging
 from typing import Optional
+from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -131,23 +132,94 @@ class LoginResponse(BaseModel):
     userId: str
 
 class UserResponse(BaseModel):
-    """Response model para representar um usuário na listagem."""
-    id: int
-    nome: str
-    login: str
-    active: bool = True
-    bloqueado: bool = False
+    """Response model para representar um usuário."""
+    id: int = Field(..., alias='pk_x_usr')
+    name: Optional[str] = None
+    login: Optional[str] = None
+    password: Optional[str] = None
+    active: Optional[bool] = True
+    fk_x_grp: Optional[int] = None
+    description: Optional[str] = None
+    administrator: Optional[bool] = None
+    email: Optional[str] = None
+    fk_x_mod: Optional[int] = None
+    changepassword: Optional[bool] = None
+    bloqueado: Optional[bool] = None
+    administradoraplicativofiscalizacao: Optional[bool] = None
 
 class PessoaResponse(BaseModel):
-    """Response model para representar uma pessoa na listagem."""
+    """Response model para representar uma pessoa."""
     id: int = Field(..., alias='pkpessoa')
-    nome: str
+    fkuser: Optional[int] = None
     tipo: Optional[int] = None
+    status: Optional[int] = None
     cpf: Optional[str] = None
-    email: Optional[str] = None
+    nome: Optional[str] = None
+    datanascimento: Optional[datetime] = None
+    naturalidade: Optional[str] = None
+    nacionalidade: Optional[str] = None
+    estadocivil: Optional[int] = None
+    sexo: Optional[int] = None
+    rg: Optional[str] = None
+    orgaoemissor: Optional[str] = None
+    fkestadoemissor: Optional[int] = None
+    fkprofissao: Optional[int] = None
+    passaporte: Optional[str] = None
+    datapassaporte: Optional[datetime] = None
+    cnpj: Optional[str] = None
+    razaosocial: Optional[str] = None
+    nomefantasia: Optional[str] = None
+    inscricaoestadual: Optional[str] = None
+    fkufinscricaoestadual: Optional[int] = None
+    datainicioatividade: Optional[datetime] = None
+    inscricaomunicipal: Optional[str] = None
+    cnaefiscal: Optional[str] = None
+    simplesnacional: Optional[int] = None
+    crccontador: Optional[str] = None
+    fknaturezajuridica: Optional[int] = None
+    fkporte: Optional[int] = None
+    identificacaoestrangeira: Optional[str] = None
+    tipoidentificacaoestrangeira: Optional[str] = None
     telefone: Optional[str] = None
+    telefonealternativo1: Optional[str] = None
+    telefonealternativo2: Optional[str] = None
+    email: Optional[str] = None
+    emailalternativo: Optional[str] = None
+    fax: Optional[str] = None
+    faxalternativo: Optional[str] = None
+    complemento: Optional[str] = None
+    cep: Optional[str] = None
     cidade: Optional[str] = None
-    estado: Optional[int] = Field(None, alias='fkestado')
+    provincia: Optional[str] = None
+    fkmunicipio: Optional[int] = None
+    fkestado: Optional[int] = None
+    fkpais: Optional[int] = None
+    statusregimeespecial: Optional[int] = None
+    dataregimeespecial: Optional[datetime] = None
+    periodoregimeespecial: Optional[int] = None
+    periodopagamentoregimeespecial: Optional[int] = None
+    fkcentroinformacao: Optional[int] = None
+    datacadastro: Optional[datetime] = None
+    dtype: Optional[int] = None
+    numeroconselhoprofissional: Optional[str] = None
+    fkconselhoprofissional: Optional[int] = None
+    fkestadoemissorconselhoprofissional: Optional[int] = None
+    caixapostal: Optional[str] = None
+    endereco: Optional[str] = None
+    profissao: Optional[str] = None
+    situacaopessoajuridica: Optional[int] = None
+    porteempresa: Optional[int] = None
+    filiacaomae: Optional[str] = None
+    filiacaopai: Optional[str] = None
+    conjuge_id: Optional[int] = None
+    matricula: Optional[str] = None
+    nomepessoa: Optional[str] = None
+    numeroidentificacao: Optional[str] = None
+    nomerazao: Optional[str] = None
+    permitirvercarscadastrante: Optional[int] = None
+    cargo: Optional[str] = None
+    dataultimaalteracao: Optional[datetime] = None
+    permitirvercarrt: Optional[int] = None
 
 # -------------------------------------------------------
 # SQLs principais
@@ -176,41 +248,175 @@ LIMIT 1;
 
 SQL_LIST_USERS = f"""
 SELECT
-  pk_x_usr as id,
-  name as nome,
+  pk_x_usr,
+  name,
   login,
+  password,
   COALESCE(active, 1)::boolean as active,
-  COALESCE(bloqueado, 0)::boolean as bloqueado
+  fk_x_grp,
+  description,
+  COALESCE(administrator, 0)::boolean as administrator,
+  email,
+  fk_x_mod,
+  COALESCE(changepassword, 0)::boolean as changepassword,
+  COALESCE(bloqueado, 0)::boolean as bloqueado,
+  COALESCE(administradoraplicativofiscalizacao, 0)::boolean as administradoraplicativofiscalizacao
 FROM {PGSCHEMA}.x_usr
 ORDER BY name;
 """
 
 SQL_LIST_PESSOAS = f"""
 SELECT
-  p.pkpessoa,
-  COALESCE(NULLIF(p.nomepessoa,''), NULLIF(p.nome,''), NULLIF(p.nomerazao,''), NULLIF(p.razaosocial,'')) AS nome,
-  p.tipo,
-  p.cpf,
-  p.email,
-  p.telefone,
-  p.cidade,
-  p.fkestado
-FROM {PGSCHEMA}.f_pessoa p
-ORDER BY p.nome;
+  pkpessoa,
+  fkuser,
+  tipo,
+  status,
+  cpf,
+  nome,
+  datanascimento,
+  naturalidade,
+  nacionalidade,
+  estadocivil,
+  sexo,
+  rg,
+  orgaoemissor,
+  fkestadoemissor,
+  fkprofissao,
+  passaporte,
+  datapassaporte,
+  cnpj,
+  razaosocial,
+  nomefantasia,
+  inscricaoestadual,
+  fkufinscricaoestadual,
+  datainicioatividade,
+  inscricaomunicipal,
+  cnaefiscal,
+  simplesnacional,
+  crccontador,
+  fknaturezajuridica,
+  fkporte,
+  identificacaoestrangeira,
+  tipoidentificacaoestrangeira,
+  telefone,
+  telefonealternativo1,
+  telefonealternativo2,
+  email,
+  emailalternativo,
+  fax,
+  faxalternativo,
+  complemento,
+  cep,
+  cidade,
+  provincia,
+  fkmunicipio,
+  fkestado,
+  fkpais,
+  statusregimeespecial,
+  dataregimeespecial,
+  periodoregimeespecial,
+  periodopagamentoregimeespecial,
+  fkcentroinformacao,
+  datacadastro,
+  dtype,
+  numeroconselhoprofissional,
+  fkconselhoprofissional,
+  fkestadoemissorconselhoprofissional,
+  caixapostal,
+  endereco,
+  profissao,
+  situacaopessoajuridica,
+  porteempresa,
+  filiacaomae,
+  filiacaopai,
+  conjuge_id,
+  matricula,
+  nomepessoa,
+  numeroidentificacao,
+  nomerazao,
+  permitirvercarscadastrante,
+  cargo,
+  dataultimaalteracao,
+  permitirvercarrt
+FROM {PGSCHEMA}.f_pessoa
+ORDER BY COALESCE(NULLIF(nomepessoa,''), NULLIF(nome,''), NULLIF(nomerazao,''), NULLIF(razaosocial,''));
 """
 
 SQL_GET_PESSOA_BY_CPF = f"""
 SELECT
-  p.pkpessoa,
-  COALESCE(NULLIF(p.nomepessoa,''), NULLIF(p.nome,''), NULLIF(p.nomerazao,''), NULLIF(p.razaosocial,'')) AS nome,
-  p.tipo,
-  p.cpf,
-  p.email,
-  p.telefone,
-  p.cidade,
-  p.fkestado
-FROM {PGSCHEMA}.f_pessoa p
-WHERE regexp_replace(p.cpf, '\\D', '', 'g') = %(cpf_digits)s
+  pkpessoa,
+  fkuser,
+  tipo,
+  status,
+  cpf,
+  nome,
+  datanascimento,
+  naturalidade,
+  nacionalidade,
+  estadocivil,
+  sexo,
+  rg,
+  orgaoemissor,
+  fkestadoemissor,
+  fkprofissao,
+  passaporte,
+  datapassaporte,
+  cnpj,
+  razaosocial,
+  nomefantasia,
+  inscricaoestadual,
+  fkufinscricaoestadual,
+  datainicioatividade,
+  inscricaomunicipal,
+  cnaefiscal,
+  simplesnacional,
+  crccontador,
+  fknaturezajuridica,
+  fkporte,
+  identificacaoestrangeira,
+  tipoidentificacaoestrangeira,
+  telefone,
+  telefonealternativo1,
+  telefonealternativo2,
+  email,
+  emailalternativo,
+  fax,
+  faxalternativo,
+  complemento,
+  cep,
+  cidade,
+  provincia,
+  fkmunicipio,
+  fkestado,
+  fkpais,
+  statusregimeespecial,
+  dataregimeespecial,
+  periodoregimeespecial,
+  periodopagamentoregimeespecial,
+  fkcentroinformacao,
+  datacadastro,
+  dtype,
+  numeroconselhoprofissional,
+  fkconselhoprofissional,
+  fkestadoemissorconselhoprofissional,
+  caixapostal,
+  endereco,
+  profissao,
+  situacaopessoajuridica,
+  porteempresa,
+  filiacaomae,
+  filiacaopai,
+  conjuge_id,
+  matricula,
+  nomepessoa,
+  numeroidentificacao,
+  nomerazao,
+  permitirvercarscadastrante,
+  cargo,
+  dataultimaalteracao,
+  permitirvercarrt
+FROM {PGSCHEMA}.f_pessoa
+WHERE regexp_replace(cpf, '\\D', '', 'g') = %(cpf_digits)s
 LIMIT 1;
 """
 
