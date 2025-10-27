@@ -577,8 +577,11 @@ def list_pessoas():
             cur.close()
             return pessoas
     except Exception as e:
-        logger.error(f"Erro ao listar pessoas: {e}")
-        raise HTTPException(status_code=500, detail="Erro ao consultar pessoas")
+        logger.error(f"Erro detalhado ao listar pessoas: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao consultar pessoas: {str(e)}"
+        )
 
 @app.get("/pessoas/cpf/{cpf}", response_model=PessoaResponse, tags=["pessoas"], summary="Buscar pessoa por CPF")
 def get_pessoa_by_cpf(cpf: str):
