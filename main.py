@@ -564,17 +564,29 @@ def list_users():
 
 
 @app.get("/pessoas", response_model=list[PessoaResponse], tags=["pessoas"], summary="Listar pessoas")
-def list_pessoas():
-    """Lista todas as pessoas cadastradas no sistema.
-    Retorna informações como id, nome, tipo, cpf, contatos e localização.
+def list_pessoas(skip: int = 0, limit: int = 100):
+    """Lista pessoas cadastradas no sistema com suporte a paginação.
+    
+    Args:
+        skip: Número de registros para pular (offset para paginação)
+        limit: Número máximo de registros a retornar (max 100)
+        
+    Returns:
+        Lista de pessoas com informações como id, nome, tipo, cpf, contatos e localização.
     """
+    if limit > 100:
+        limit = 100  # Limita o máximo de registros por questões de performance
+        
     try:
         with pool.connection() as conn:
             cur = conn.cursor()
-            cur.execute(SQL_LIST_PESSOAS)
+            # Adiciona LIMIT e OFFSET na query
+            paginated_query = SQL_LIST_PESSOAS.rstrip(';') + f" LIMIT {limit} OFFSET {skip};"
+            cur.execute(paginated_query)
             columns = [desc[0] for desc in cur.description]
             pessoas = [dict(zip(columns, row)) for row in cur.fetchall()]
             cur.close()
+            logger.info(f"Consulta retornou {len(pessoas)} pessoas (skip={skip}, limit={limit})")
             return pessoas
     except Exception as e:
         logger.error(f"Erro detalhado ao listar pessoas: {str(e)}", exc_info=True)
