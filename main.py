@@ -147,6 +147,32 @@ class UserResponse(BaseModel):
     bloqueado: Optional[bool] = None
     administradoraplicativofiscalizacao: Optional[bool] = None
 
+class ImovelResponse(BaseModel):
+    """Response model para representar um imóvel."""
+    id: int = Field(..., alias='pkimovel')
+    nome: Optional[str] = None
+    areatotal: Optional[float] = None
+    numero: Optional[str] = None
+    livro: Optional[str] = None
+    folha: Optional[str] = None
+    cartorio: Optional[str] = None
+    tipo: Optional[int] = None
+    fkmunicipio: Optional[int] = None
+    nirf: Optional[str] = None
+    cidade: Optional[str] = None
+    provincia: Optional[str] = None
+    fkpais: Optional[int] = None
+    fkestado: Optional[int] = None
+    inscricaoMunicipal: Optional[str] = None
+    ccirincra: Optional[str] = None
+    roteiroAcesso: Optional[str] = None
+    cep: Optional[str] = None
+    complemento: Optional[str] = None
+    endereco: Optional[str] = None
+    areaReservaLegal: Optional[float] = None
+    areaPreservacaoPermanente: Optional[float] = None
+    possuiCar: Optional[bool] = None
+
 class PessoaResponse(BaseModel):
     """Response model para representar uma pessoa."""
     id: int = Field(..., alias='pkpessoa')
@@ -244,6 +270,35 @@ SELECT
 FROM {PGSCHEMA}.f_pessoa p
 WHERE p.fkuser = %(user_id)s
 LIMIT 1;
+"""
+
+SQL_LIST_IMOVEIS = f"""
+SELECT
+  pkimovel,
+  nome,
+  areatotal,
+  numero,
+  livro,
+  folha,
+  cartorio,
+  tipo,
+  fkmunicipio,
+  nirf,
+  cidade,
+  provincia,
+  fkpais,
+  fkestado,
+  inscricaoMunicipal,
+  ccirincra,
+  roteiroAcesso,
+  cep,
+  complemento,
+  endereco,
+  areaReservaLegal,
+  areaPreservacaoPermanente,
+  possuiCar
+FROM {PGSCHEMA}.f_imovel
+ORDER BY nome;
 """
 
 SQL_LIST_USERS = f"""
@@ -682,6 +737,38 @@ def get_pessoa_by_cnpj(cnpj: str):
         raise HTTPException(
             status_code=500,
             detail="Erro ao consultar pessoa"
+        )
+
+@app.get("/imoveis", response_model=list[ImovelResponse], tags=["imoveis"], summary="Listar imóveis")
+def list_imoveis(skip: int = 0, limit: int = 100):
+    """Lista imóveis cadastrados no sistema.
+    
+    Args:
+        skip: Número de registros para pular (offset para paginação)
+        limit: Número máximo de registros a retornar (max 100)
+        
+    Returns:
+        Lista de imóveis com informações como nome, área, localização e documentação.
+    """
+    if limit > 100:
+        limit = 100  # Limita o máximo de registros por questões de performance
+        
+    try:
+        with pool.connection() as conn:
+            cur = conn.cursor()
+            # Query base com paginação como parâmetros
+            paginated_query = SQL_LIST_IMOVEIS.replace(';', '') + " LIMIT %(limit)s OFFSET %(offset)s;"
+            cur.execute(paginated_query, {'limit': limit, 'offset': skip})
+            columns = [desc[0] for desc in cur.description]
+            imoveis = [dict(zip(columns, row)) for row in cur.fetchall()]
+            cur.close()
+            logger.info(f"Consulta retornou {len(imoveis)} imóveis (skip={skip}, limit={limit})")
+            return imoveis
+    except Exception as e:
+        logger.error(f"Erro detalhado ao listar imóveis: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Erro ao consultar imóveis: {str(e)}"
         )
 
 @app.get("/pessoas/juridicas", response_model=list[PessoaResponse], tags=["pessoas"], summary="Listar pessoas jurídicas ativas")
