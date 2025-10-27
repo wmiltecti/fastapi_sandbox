@@ -515,6 +515,17 @@ def issue_token(payload: dict) -> str:
 # -------------------------------------------------------
 # Endpoints
 # -------------------------------------------------------
+@app.get("/", tags=["infra"], summary="Root endpoint")
+def root():
+    """Endpoint raiz que retorna informações básicas da API."""
+    return {
+        "service": "fastapi_sandbox",
+        "version": "3.0.0",
+        "status": "ok",
+        "docs_url": "/docs",
+        "health_check": "/health"
+    }
+
 @app.get("/health", tags=["infra"])
 def health():
     """Verificação de disponibilidade básica."""
