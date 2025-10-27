@@ -339,6 +339,10 @@ SELECT
   dataultimaalteracao,
   permitirvercarrt
 FROM {PGSCHEMA}.f_pessoa
+WHERE cpf IS NOT NULL
+AND cpf != ''
+AND tipo = 1
+AND dtype = 1
 ORDER BY COALESCE(NULLIF(nomepessoa,''), NULLIF(nome,''), NULLIF(nomerazao,''), NULLIF(razaosocial,''));
 """
 
