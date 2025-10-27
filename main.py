@@ -655,15 +655,49 @@ def get_pessoa_by_cnpj(cnpj: str):
             status_code=500,
             detail="Erro ao consultar pessoa"
         )
+
+@app.get("/pessoas/juridicas", response_model=list[PessoaResponse], tags=["pessoas"], summary="Listar pessoas jurídicas ativas")
+def list_pessoas_juridicas():
+    """Lista todas as pessoas jurídicas ativas cadastradas."""
+    try:
+        with pool.connection() as conn:
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT 
+                    pkpessoa,
+                    COALESCE(nome, razaosocial, nomefantasia) as nome,
+                    razaosocial,
+                    cnpj,
+                    cidade as municipio,
+                    fkestado,
+                    status,
+                    nomefantasia,
+                    inscricaoestadual,
+                    inscricaomunicipal,
+                    email,
+                    telefone,
+                    tipo,
+                    dtype
+                FROM f_pessoa
+                WHERE cnpj IS NOT NULL
+                AND tipo = 1
+                AND dtype = 1
+                ORDER BY razaosocial
+            """)
+            rows = cur.fetchall()
+            if not rows:
+                return []
+            
+            columns = [desc[0] for desc in cur.description]
+            result = [dict(zip(columns, row)) for row in rows]
+            cur.close()
+            return result
     except Exception as e:
-        logger.error(f"Erro ao listar pessoas: {e}")
-        raise HTTPException(status_code=500, detail="Erro ao consultar pessoas")
-    except Exception as e:
-        logger.exception("Failed to list users")
+        logger.exception("Erro ao listar pessoas jurídicas")
         raise HTTPException(
             status_code=500,
-            detail={"message": "Erro ao listar usuários", "error": str(e)}
-        ) from e
+            detail={"message": "Erro ao listar pessoas jurídicas", "error": str(e)}
+        )
 
 @app.post("/auth/login", response_model=LoginResponse, tags=["auth"], summary="Autenticar usuário (CPF)")
 def login(body: LoginBody):
