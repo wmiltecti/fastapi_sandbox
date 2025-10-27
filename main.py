@@ -591,9 +591,9 @@ def list_pessoas(skip: int = 0, limit: int = 100):
     try:
         with pool.connection() as conn:
             cur = conn.cursor()
-            # Adiciona LIMIT e OFFSET na query
-            paginated_query = SQL_LIST_PESSOAS.rstrip(';') + f" LIMIT {limit} OFFSET {skip};"
-            cur.execute(paginated_query)
+            # Query base com paginação como parâmetros
+            paginated_query = SQL_LIST_PESSOAS.replace(';', '') + " LIMIT %(limit)s OFFSET %(offset)s;"
+            cur.execute(paginated_query, {'limit': limit, 'offset': skip})
             columns = [desc[0] for desc in cur.description]
             pessoas = [dict(zip(columns, row)) for row in cur.fetchall()]
             cur.close()
