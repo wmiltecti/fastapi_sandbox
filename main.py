@@ -341,8 +341,6 @@ SELECT
 FROM {PGSCHEMA}.f_pessoa
 WHERE cpf IS NOT NULL
 AND cpf != ''
-AND tipo = 1
-AND dtype = 1
 ORDER BY COALESCE(NULLIF(nomepessoa,''), NULLIF(nome,''), NULLIF(nomerazao,''), NULLIF(razaosocial,''));
 """
 
@@ -684,8 +682,7 @@ def list_pessoas_juridicas():
                     dtype
                 FROM f_pessoa
                 WHERE cnpj IS NOT NULL
-                AND tipo = 1
-                AND dtype = 1
+                AND cnpj != ''
                 ORDER BY razaosocial
             """)
             rows = cur.fetchall()
