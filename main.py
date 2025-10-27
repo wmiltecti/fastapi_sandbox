@@ -1,5 +1,5 @@
 import os, re, json, time, base64, logging
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from datetime import datetime, date
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,6 +11,7 @@ from psycopg_pool import ConnectionPool
 import hashlib, base64
 import os
 import psycopg2.extras
+import httpx
 
 # importe bcrypt no topo do arquivo (já sugerido antes)
 try:
@@ -260,6 +261,46 @@ class PessoaResponse(BaseModel):
     cargo: Optional[str] = None
     dataultimaalteracao: Optional[datetime] = None
     permitirvercarrt: Optional[int] = None
+
+# -------------------------------------------------------
+# Modelos de Blockchain
+# -------------------------------------------------------
+class BlockchainField(BaseModel):
+    """Campo customizado para o blockchain."""
+    NmField: str = Field(..., description="Nome do campo")
+    DsValue: str = Field(..., description="Descrição/valor do campo")
+
+class BlockchainRegisterRequest(BaseModel):
+    """Request model para registrar dados no blockchain."""
+    IdBlockchain: int = Field(..., description="ID do registro no blockchain")
+    Data: Dict[str, Any] = Field(..., description="Dados a serem registrados")
+    Fields: List[BlockchainField] = Field(..., description="Campos customizados")
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "IdBlockchain": 1,
+                "Data": {
+                    "pkpessoa": "2001327",
+                    "fkuser": "264637",
+                    "cpf": "859.965.722-49",
+                    "nome": "ABIMAEL RIBEIRO DE SOUZA"
+                },
+                "Fields": [
+                    {
+                        "NmField": "LicenciamentoAmbientalPessoaFisica",
+                        "DsValue": "Pessoa fisica do licenciamento ambiental"
+                    }
+                ]
+            }
+        }
+
+class BlockchainRegisterResponse(BaseModel):
+    """Response model do registro blockchain."""
+    success: bool
+    message: str
+    blockchain_response: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
 
 # -------------------------------------------------------
 # SQLs principais
@@ -874,6 +915,114 @@ def list_pessoas_juridicas():
         raise HTTPException(
             status_code=500,
             detail={"message": "Erro ao listar pessoas jurídicas", "error": str(e)}
+        )
+
+@app.post("/blockchain/register", response_model=BlockchainRegisterResponse, tags=["blockchain"], 
+          summary="Registrar dados no blockchain Continuus")
+async def register_blockchain(payload: BlockchainRegisterRequest):
+    """
+    Registra dados no blockchain Continuus via API externa.
+    
+    Args:
+        payload: Dados a serem registrados contendo IdBlockchain, Data e Fields
+        
+    Returns:
+        Resposta do blockchain com status de sucesso/erro
+        
+    Exemplo de payload:
+        {
+            "IdBlockchain": 1,
+            "Data": {
+                "pkpessoa": "2001327",
+                "cpf": "859.965.722-49",
+                "nome": "João Silva"
+            },
+            "Fields": [
+                {
+                    "NmField": "LicenciamentoAmbientalPessoaFisica",
+                    "DsValue": "Pessoa fisica do licenciamento ambiental"
+                }
+            ]
+        }
+    """
+    BLOCKCHAIN_API_URL = "http://continuus.miltecti.com.br/continuus_api/api/Block/Register"
+    BLOCKCHAIN_DSKEY = os.getenv("BLOCKCHAIN_DSKEY")
+    
+    if not BLOCKCHAIN_DSKEY:
+        logger.error("BLOCKCHAIN_DSKEY não configurada no ambiente")
+        return BlockchainRegisterResponse(
+            success=False,
+            message="Erro de configuração: chave de autenticação não encontrada",
+            error="BLOCKCHAIN_DSKEY não está configurada no arquivo .env"
+        )
+    
+    try:
+        # Converte o payload para dict
+        payload_dict = payload.model_dump()
+        
+        logger.info(f"Enviando dados para blockchain: IdBlockchain={payload.IdBlockchain}")
+        
+        # Criando headers com autenticação
+        headers = {
+            "Content-Type": "application/json",
+            "dsKey": BLOCKCHAIN_DSKEY
+        }
+        
+        # Faz a requisição POST para a API do blockchain
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(
+                BLOCKCHAIN_API_URL,
+                json=payload_dict,
+                headers=headers
+            )
+            
+            logger.info(f"Response status: {response.status_code}")
+            
+            # Verifica se a requisição foi bem sucedida
+            response.raise_for_status()
+            
+            # Tenta parsear a resposta como JSON
+            try:
+                blockchain_response = response.json()
+            except Exception:
+                blockchain_response = {"raw_response": response.text}
+            
+            logger.info(f"Blockchain registrado com sucesso: IdBlockchain={payload.IdBlockchain}")
+            
+            return BlockchainRegisterResponse(
+                success=True,
+                message="Dados registrados no blockchain com sucesso",
+                blockchain_response=blockchain_response
+            )
+            
+    except httpx.HTTPStatusError as e:
+        error_detail = f"Erro HTTP {e.response.status_code}: {e.response.text}"
+        logger.error(f"Erro ao comunicar com blockchain API: {error_detail}")
+        
+        return BlockchainRegisterResponse(
+            success=False,
+            message="Erro ao registrar no blockchain",
+            error=error_detail
+        )
+        
+    except httpx.RequestError as e:
+        error_detail = f"Erro de conexão: {str(e)}"
+        logger.error(f"Erro de requisição para blockchain API: {error_detail}")
+        
+        return BlockchainRegisterResponse(
+            success=False,
+            message="Erro de conexão com blockchain",
+            error=error_detail
+        )
+        
+    except Exception as e:
+        error_detail = str(e)
+        logger.exception("Erro inesperado ao registrar no blockchain")
+        
+        return BlockchainRegisterResponse(
+            success=False,
+            message="Erro inesperado",
+            error=error_detail
         )
 
 @app.post("/auth/login", response_model=LoginResponse, tags=["auth"], summary="Autenticar usuário (CPF)")

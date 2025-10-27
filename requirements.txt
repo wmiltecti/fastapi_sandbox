@@ -6,4 +6,4 @@ bcrypt
 python-dotenv
 psycopg 
 psycopg2
-
+httpx
