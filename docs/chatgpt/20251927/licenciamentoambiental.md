@@ -880,3 +880,334 @@ export async function upsertDadosGerais(payload: any) {
 
 Se você me der o **mapa de regras** dos documentos da Evelyn (por porte/potencial/atividade), já devolvo a **validação server-side** pronta (procedures ou Edge Function) e os **prompts do Bolt.new** para consumir esses endpoints.
 
+rodei o script no supabase e deu certo.
+Success. No rows returned
+Agora vou analisar essas questões da api que explicou para ver como solicito para o copilot implementar as api no back-end em pyhton e no bolt.new como consumir no front-end. Se tiver sugestões para os dois casos, fique a vontade. 
+
+Excelente! Bora fechar isso em dois pacotes bem práticos — **backend Python (FastAPI) como gateway** e **front no Bolt.new** consumindo esse gateway (ou direto o PostgREST, se preferir). Tudo pensado para **não conectar direto ao banco**, só **REST do Supabase** (PostgREST + Storage) com **RLS**.
+
+---
+
+# #licenciamentoambiental — Guia rápido de implementação
+
+## 1) Backend Python (FastAPI) — “API Gateway” para o Supabase
+
+### Objetivo
+
+* Centralizar **validações de negócio**, **logs**, **rate-limit**, **mapeamento de erros** e **versões**.
+* **Repassar o JWT do usuário** ao Supabase para respeitar RLS.
+* Usar **Service Role** só onde fizer sentido (ex.: seeds/admin, operações atômicas/validação final).
+
+### Layout de pastas sugerido
+
+```
+app/
+  main.py
+  settings.py
+  deps.py
+  supabase_proxy.py
+  routers/
+    processos.py
+    arquivos.py
+  schemas/
+    processos.py
+    comuns.py
+```
+
+### Env (.env)
+
+```
+SUPABASE_URL=https://<PROJECT_REF>.supabase.co
+SUPABASE_REST_URL=https://<PROJECT_REF>.supabase.co/rest/v1
+SUPABASE_STORAGE_URL=https://<PROJECT_REF>.supabase.co/storage/v1
+SUPABASE_ANON_KEY=...
+SUPABASE_SERVICE_ROLE=...   # cuidado: manter só no backend
+API_BASE=/api/v1
+```
+
+### Padrão de autenticação
+
+* **Usuário final**: header `Authorization: Bearer <USER_JWT>` → backend **repassa** esse header ao PostgREST.
+* **Seeds/admin**: o backend usa `Authorization: Bearer <SERVICE_ROLE>` **apenas** em rotas protegidas de admin.
+
+### Exemplo de utilitário: `supabase_proxy.py`
+
+```python
+# app/supabase_proxy.py
+import os, httpx
+from typing import Dict, Any, Optional
+
+SUPABASE_REST_URL = os.getenv("SUPABASE_REST_URL", "")
+SUPABASE_ANON_KEY = os.getenv("SUPABASE_ANON_KEY", "")
+SUPABASE_SERVICE_ROLE = os.getenv("SUPABASE_SERVICE_ROLE", "")
+
+def base_headers(user_bearer: Optional[str] = None) -> Dict[str, str]:
+    """
+    Se houver bearer do usuário, usa-o (RLS do usuário).
+    Caso contrário, usa anon key (para leituras públicas).
+    """
+    if user_bearer:
+        return {
+            "Authorization": user_bearer,     # já vem "Bearer x.y.z"
+            "apikey": SUPABASE_ANON_KEY,
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation"
+        }
+    # sem usuário: anon
+    return {
+        "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+        "apikey": SUPABASE_ANON_KEY,
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+    }
+
+def admin_headers() -> Dict[str, str]:
+    return {
+        "Authorization": f"Bearer {SUPABASE_SERVICE_ROLE}",
+        "apikey": SUPABASE_SERVICE_ROLE,
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "Prefer": "return=representation"
+    }
+
+async def rest_post(path: str, json: Any, headers: Dict[str, str]):
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.post(f"{SUPABASE_REST_URL}/{path}", json=json, headers=headers)
+        r.raise_for_status()
+        return r.json()
+
+async def rest_patch(path: str, json: Any, headers: Dict[str, str]):
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.patch(f"{SUPABASE_REST_URL}/{path}", json=json, headers=headers)
+        r.raise_for_status()
+        return r.json()
+
+async def rest_get(path: str, headers: Dict[str, str]):
+    async with httpx.AsyncClient(timeout=30) as client:
+        r = await client.get(f"{SUPABASE_REST_URL}/{path}", headers=headers)
+        r.raise_for_status()
+        return r.json()
+```
+
+### Schemas (Pydantic) enxutos — `schemas/processos.py`
+
+```python
+# app/schemas/processos.py
+from pydantic import BaseModel, Field, EmailStr
+from typing import Optional
+
+class ProcessoCreate(BaseModel):
+    user_id: str
+    status: str = Field(default="draft")
+
+class DadosGeraisUpsert(BaseModel):
+    processo_id: str
+    tipo_pessoa: Optional[str] = Field(None, pattern="^(PF|PJ)$")
+    cpf: Optional[str] = None
+    cnpj: Optional[str] = None
+    razao_social: Optional[str] = None
+    nome_fantasia: Optional[str] = None
+    porte: Optional[str] = None
+    potencial_poluidor: Optional[str] = None
+    descricao_resumo: Optional[str] = None
+    contato_email: Optional[EmailStr] = None
+    contato_telefone: Optional[str] = None
+
+class LocalizacaoCreate(BaseModel):
+    processo_id: str
+    endereco: Optional[str] = None
+    municipio_ibge: Optional[str] = None
+    uf: Optional[str] = None
+    cep: Optional[str] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    referencia: Optional[str] = None
+```
+
+### Rotas essenciais — `routers/processos.py`
+
+```python
+# app/routers/processos.py
+from fastapi import APIRouter, Header, HTTPException
+from app.supabase_proxy import rest_post, rest_patch, rest_get, base_headers
+from app.schemas.processos import ProcessoCreate, DadosGeraisUpsert, LocalizacaoCreate
+
+router = APIRouter(prefix="/processos", tags=["processos"])
+
+@router.post("", summary="Criar processo")
+async def criar_processo(payload: ProcessoCreate, authorization: str = Header(...)):
+    headers = base_headers(authorization)
+    data = await rest_post("licenciamento.processo", payload.model_dump(), headers)
+    return data[0] if data else {}
+
+@router.put("/{processo_id}/dados-gerais", summary="Upsert dados gerais")
+async def upsert_dados_gerais(processo_id: str, body: DadosGeraisUpsert, authorization: str = Header(...)):
+    headers = base_headers(authorization)
+    # força o processo_id vindo da rota
+    body.processo_id = processo_id
+    path = "licenciamento.processo_dados_gerais?on_conflict=processo_id"
+    # Prefer para merge de duplicados
+    headers = {**headers, "Prefer": "return=representation, resolution=merge-duplicates"}
+    data = await rest_post(path, body.model_dump(), headers)
+    return data[0] if data else {}
+
+@router.post("/{processo_id}/localizacoes", summary="Adicionar localizacao")
+async def add_localizacao(processo_id: str, body: LocalizacaoCreate, authorization: str = Header(...)):
+    headers = base_headers(authorization)
+    payload = body.model_dump()
+    payload["processo_id"] = processo_id
+    data = await rest_post("licenciamento.processo_localizacao", payload, headers)
+    return data[0] if data else {}
+
+@router.get("/{processo_id}/wizard-status", summary="Status do wizard")
+async def wizard_status(processo_id: str, authorization: str = Header(...)):
+    headers = base_headers(authorization)
+    path = f"licenciamento.processo_wizard_status?id=eq.{processo_id}"
+    data = await rest_get(path, headers)
+    if not data:
+        raise HTTPException(404, "Processo não encontrado")
+    return data[0]
+
+@router.post("/{processo_id}/submit", summary="Submeter para revisão")
+async def submit(processo_id: str, authorization: str = Header(...)):
+    headers = base_headers(authorization)
+    # Regras mínimas: pelo menos 1 localização e 1 atividade e resp. técnico
+    checks = await rest_get(f"licenciamento.processo_wizard_status?id=eq.{processo_id}", headers)
+    if not checks:
+        raise HTTPException(404, "Processo inexistente")
+    w = checks[0]
+    if (w["n_localizacoes"] or 0) < 1:
+        raise HTTPException(400, "Adicione ao menos 1 localização.")
+    if (w["n_atividades"] or 0) < 1:
+        raise HTTPException(400, "Adicione ao menos 1 atividade.")
+    if not w["v_resp_tecnico"]:
+        raise HTTPException(400, "Defina o responsável técnico.")
+    # Transição de status
+    data = await rest_patch(f"licenciamento.processo?id=eq.{processo_id}", {"status": "in_review"}, headers)
+    return data[0] if data else {}
+```
+
+### `main.py`
+
+```python
+from fastapi import FastAPI
+from app.routers import processos
+
+app = FastAPI(title="#licenciamentoambiental API", version="1.0.0")
+app.include_router(processos.router, prefix="/api/v1")
+```
+
+> Dica: adicione **CORS** liberando o domínio do Bolt.new; opcionalmente **rate limit** (SlowAPI) e **logs estruturados** (loguru).
+
+---
+
+## 2) Front (Bolt.new / React + Vite)
+
+### Tech stack sugerido
+
+* **react-hook-form** + **zod** (validação de formulário).
+* **@tanstack/react-query** (fetch/cache, retry, estados de loading).
+* **axios** (client HTTP).
+* **Tailwind** + **shadcn/ui** (UX rápido).
+* **Masks** (CPF/CNPJ/CEP) com libs leves (ou simples helpers).
+
+### Client HTTP
+
+```ts
+// src/services/http.ts
+import axios from "axios";
+
+export const api = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1",
+});
+
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("supabase_jwt");
+  if (token) config.headers.Authorization = `Bearer ${token}`;
+  return config;
+});
+```
+
+### Hooks principais
+
+```ts
+// src/services/processos.ts
+import { api } from "./http";
+
+export async function criarProcesso(userId: string) {
+  const { data } = await api.post("/processos", { user_id: userId, status: "draft" });
+  return data; // { id, protocolo, ... }
+}
+
+export async function upsertDadosGerais(processoId: string, payload: any) {
+  const { data } = await api.put(`/processos/${processoId}/dados-gerais`, payload);
+  return data;
+}
+
+export async function addLocalizacao(processoId: string, payload: any) {
+  const { data } = await api.post(`/processos/${processoId}/localizacoes`, payload);
+  return data;
+}
+
+export async function getWizardStatus(processoId: string) {
+  const { data } = await api.get(`/processos/${processoId}/wizard-status`);
+  return data;
+}
+
+export async function submitProcesso(processoId: string) {
+  const { data } = await api.post(`/processos/${processoId}/submit`);
+  return data;
+}
+```
+
+### Wizard — boas práticas
+
+* **Contexto** (`WizardContext`) para manter `processoId` e progresso.
+* **Autosave** por etapa (debounce 600–1000ms).
+* **Feedback** claro (toast de sucesso/erro).
+* **Campos condicionais** (ex.: mostrar armazenamento se tiver combustível).
+* **Botão “Revisão final”** lendo `wizard-status`.
+
+---
+
+## 3) Prompts curtos para Copilot (backend & front)
+
+### Prompt — **Backend (FastAPI)**
+
+> Crie endpoints FastAPI sob `/api/v1` que **encaminham** requisições ao PostgREST do Supabase, repassando o header `Authorization` do usuário para respeitar **RLS**.
+> Implemente:
+>
+> * `POST /processos` → POST em `licenciamento.processo`.
+> * `PUT /processos/{id}/dados-gerais` → upsert em `licenciamento.processo_dados_gerais?on_conflict=processo_id` com `Prefer: return=representation, resolution=merge-duplicates`.
+> * `POST /processos/{id}/localizacoes` → POST em `licenciamento.processo_localizacao`.
+> * `GET /processos/{id}/wizard-status` → GET em `licenciamento.processo_wizard_status?id=eq.{id}`.
+> * `POST /processos/{id}/submit` → valida `wizard-status` (mínimos: 1 localização, 1 atividade, responsável técnico) e PATCH em `licenciamento.processo` definindo `status = in_review`.
+>   Use **httpx.AsyncClient**, Pydantic para schemas e módulo utilitário para headers (anon, user, service role). Trate erros do Supabase (status/ body) mapeando para `HTTPException`.
+
+### Prompt — **Front (Bolt.new)**
+
+> Configure axios com `baseURL = VITE_API_BASE_URL` e um interceptor que injeta `Authorization: Bearer <supabase_jwt>`.
+> Crie hooks:
+>
+> * `criarProcesso(userId)`
+> * `upsertDadosGerais(processoId, form)`
+> * `addLocalizacao(processoId, form)`
+> * `getWizardStatus(processoId)`
+> * `submitProcesso(processoId)`
+>   Use React Query para cache, `react-hook-form + zod` nas etapas do wizard, toasts de sucesso/erro, e autosave com debounce.
+>   Botões **Próximo/Voltar** trocam etapas; “Revisão” lê `getWizardStatus` e destaca pendências.
+
+---
+
+## 4) Extras que valem ouro
+
+* **CORS** no backend: libere o domínio do Bolt.new.
+* **Observabilidade**: log JSON (request id, user id, protocolo).
+* **Idempotência**: use `on_conflict` nas 1:1; nas N:1, crie `UNIQUE (processo_id, tipo)` (se fizer sentido).
+* **Segurança**: nunca expor SERVICE_ROLE no front; só no backend.
+* **Versionamento**: prefixe rotas com `/api/v1`; quando mudar regras, suba `/api/v2`.
+
+Se quiser, eu te preparo um **repo esqueleto** (FastAPI + Dockerfile + compose) com essas rotas e um **exemplo de tela do wizard** já plugado — é só me dizer se prefere **gateway Python** (como acima) ou **consumo direto do PostgREST no front** (mantendo apenas uma pequena Edge Function para “submit”).
+

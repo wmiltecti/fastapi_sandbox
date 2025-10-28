@@ -187,3 +187,169 @@ Recomendações adicionais:
 Você pode criar um arquivo Markdown no repositório (ex: `api-specs.md`) com todas as especificações, ou criar um documento no formato que preferir seguindo esse template. Isso vai facilitar a implementação consistente de todas as APIs necessárias.
 
 Quer que eu crie um arquivo de template inicial no repositório para você começar a documentar as APIs?
+
+
+
+para o projeto de front-end estou usando o bolt.new. No caso, preciso de um conjunto de prompts, passo a passo, se for o caso, para solictar a ele deixar de usar a api atual, usada por ele, do mockup, e passar a usar a nova api do sandbox para o contexto do acesso via CPF. Cole as configurações para o uso da nova api se achar importante.
+
+
+Vou criar um conjunto de prompts passo a passo para você usar com o bolt.new para integrar a API do fastapi_sandbox. Vou incluir também as informações importantes sobre a API e exemplos de configuração.
+
+Preciso alterar a configuração da API do projeto para apontar para uma nova API em FastAPI. 
+A URL base da API é: https://fastapi-sandbox.onrender.com
+Por favor, ajuste as configurações de ambiente/API para usar esta nova URL base em vez do mockup atual.
+Preciso implementar a chamada ao endpoint de busca por CPF com as seguintes especificações:
+
+Endpoint: GET /pessoas/cpf/{cpf}
+URL Exemplo: https://fastapi-sandbox.onrender.com/pessoas/cpf/12345678900
+
+Características:
+- Aceita CPF com ou sem máscara
+- CPF deve ter 11 dígitos após remover a máscara
+- Retorna status 404 se não encontrar
+- Retorna status 400 se CPF inválido
+
+Response (200) exemplo:
+{
+  "id": 1,
+  "nome": "Nome da Pessoa",
+  "tipo": 1,
+  "cpf": "12345678900",
+  "email": "email@exemplo.com",
+  "telefone": "11999999999",
+  "cidade": "São Paulo",
+  "estado": 35,
+  ... (outros campos disponíveis)
+}
+
+Por favor, implemente a chamada a este endpoint substituindo o mock atual.
+
+
+Preciso implementar o tratamento de erros para as respostas da API de CPF. Os cenários são:
+
+1. Status 400 - Bad Request
+{
+  "detail": "CPF inválido. Deve conter 11 dígitos."
+}
+
+2. Status 404 - Not Found
+{
+  "detail": "Pessoa não encontrada com o CPF informado."
+}
+
+3. Status 500 - Internal Server Error
+{
+  "detail": "Erro ao consultar pessoa"
+}
+
+Por favor, implemente o tratamento adequado para cada tipo de erro, mostrando mensagens amigáveis ao usuário.
+
+Preciso que os dados retornados da API sejam formatados adequadamente antes de exibir:
+
+1. CPF: Formato XXX.XXX.XXX-XX
+2. Telefone: Formato (XX) XXXXX-XXXX
+3. Datas: Formato DD/MM/YYYY
+4. Campos booleanos: converter para "Sim"/"Não"
+5. Campos numéricos: adicionar separadores de milhar quando apropriado
+
+Por favor, implemente as funções de formatação necessárias para estes campos.
+
+
+Preciso implementar estados de loading adequados durante a chamada à API:
+
+1. Mostrar spinner/loading enquanto consulta o CPF
+2. Desabilitar o botão de busca durante a consulta
+3. Mostrar feedback visual quando:
+   - Iniciando a busca
+   - Recebendo a resposta
+   - Em caso de erro
+   - Quando dados são encontrados
+
+Por favor, implemente estes estados de loading e feedback visual.
+
+
+// Configuração base da API
+const API_BASE_URL = 'https://fastapi-sandbox.onrender.com';
+
+// Interface da resposta
+interface PessoaResponse {
+  id: number;
+  fkuser?: number;
+  tipo?: number;
+  status?: number;
+  cpf?: string;
+  nome?: string;
+  datanascimento?: string;
+  naturalidade?: string;
+  nacionalidade?: string;
+  estadocivil?: number;
+  sexo?: number;
+  rg?: string;
+  orgaoemissor?: string;
+  fkestadoemissor?: number;
+  fkprofissao?: number;
+  passaporte?: string;
+  datapassaporte?: string;
+  cnpj?: string;
+  razaosocial?: string;
+  nomefantasia?: string;
+  inscricaoestadual?: string;
+  fkufinscricaoestadual?: number;
+  datainicioatividade?: string;
+  inscricaomunicipal?: string;
+  cnaefiscal?: string;
+  simplesnacional?: number;
+  crccontador?: string;
+  fknaturezajuridica?: number;
+  fkporte?: number;
+  identificacaoestrangeira?: string;
+  tipoidentificacaoestrangeira?: string;
+  telefone?: string;
+  telefonealternativo1?: string;
+  telefonealternativo2?: string;
+  email?: string;
+  emailalternativo?: string;
+  fax?: string;
+  faxalternativo?: string;
+  complemento?: string;
+  cep?: string;
+  cidade?: string;
+  provincia?: string;
+  fkmunicipio?: number;
+  fkestado?: number;
+  fkpais?: number;
+  // ... outros campos conforme necessário
+}
+
+// Exemplo de função de busca
+async function buscarPorCPF(cpf: string): Promise<PessoaResponse> {
+  const cpfLimpo = cpf.replace(/\D/g, '');
+  const response = await fetch(`${API_BASE_URL}/pessoas/cpf/${cpfLimpo}`);
+  
+  if (!response.ok) {
+    if (response.status === 400) {
+      throw new Error('CPF inválido');
+    }
+    if (response.status === 404) {
+      throw new Error('Pessoa não encontrada');
+    }
+    throw new Error('Erro ao consultar pessoa');
+  }
+  
+  return response.json();
+}
+
+Preciso implementar testes para a integração com a API. Cenários:
+
+1. Teste de sucesso:
+   - CPF válido com máscara
+   - CPF válido sem máscara
+   
+2. Teste de falhas:
+   - CPF inválido (menos de 11 dígitos)
+   - CPF não encontrado
+   - Erro de servidor
+
+Por favor, implemente os testes para estes cenários.
+
+Use estes prompts sequencialmente para guiar o bolt.new na implementação da integração com a API. Se precisar de ajuda com algum aspecto específico ou quiser que eu detalhe mais algum dos prompts, me avise!

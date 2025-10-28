@@ -5,5 +5,8 @@ psycopg-pool
 bcrypt
 python-dotenv
 psycopg 
-psycopg2
+psycopg2-binary
 httpx
+pydantic-settings
+email-validator
+slowapi

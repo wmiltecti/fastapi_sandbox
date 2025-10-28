@@ -75,24 +75,119 @@ load_dotenv(find_dotenv(), override=True)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("fastapi_sandbox")
 
+# Importar configurações e router v1
+from app.config import settings
+from app.routers.api_v1_processos import router as v1_processos_router
+from app.middleware.request_id import RequestIDMiddleware
+
+# Tags metadata para organização do Swagger
+tags_metadata = [
+    {
+        "name": "v1-processos",
+        "description": """
+        **API v1** - Gerenciamento de processos de licenciamento ambiental.
+        
+        Utiliza Supabase REST API com autenticação JWT e RLS (Row Level Security).
+        
+        Workflow típico:
+        1. **POST /api/v1/processos** - Criar processo
+        2. **PUT /api/v1/processos/{id}/dados-gerais** - Cadastrar dados gerais
+        3. **POST /api/v1/processos/{id}/localizacoes** - Adicionar localizações
+        4. **GET /api/v1/processos/{id}/wizard-status** - Verificar status
+        5. **POST /api/v1/processos/{id}/submit** - Submeter para revisão
+        """,
+    },
+    {
+        "name": "Auth",
+        "description": "Endpoints de autenticação e login (legacy)",
+    },
+    {
+        "name": "Pessoas",
+        "description": "Consulta de pessoas físicas e jurídicas (legacy)",
+    },
+    {
+        "name": "CAR",
+        "description": "Consulta de imóveis CAR (legacy)",
+    },
+    {
+        "name": "Blockchain",
+        "description": "Integração com Continuus Blockchain para registro de processos",
+    },
+]
+
+# Servidores para documentação
+servers = [
+    {
+        "url": "http://localhost:8000",
+        "description": "Ambiente de desenvolvimento local"
+    },
+    {
+        "url": "https://fastapi-sandbox.onrender.com",
+        "description": "Ambiente de produção (Render)"
+    }
+]
+
 app = FastAPI(
-    title="Licenciamento Ambiental – Auth (Supabase)",
-    version="3.0.0",
+    title=settings.APP_NAME,
+    version=settings.APP_VERSION,
     description="""
 API de autenticação integrada ao Supabase/Postgres.  
 Fluxo atual: **CPF** via `x_usr`, com nome em `f_pessoa`.  
 Outros perfis (CNPJ, PASSAPORTE, ESTRANGEIRO) já previstos no contrato e liberados evolutivamente.
+
+**API v1** disponível em `/api/v1` com integração Supabase REST.
+Todos os endpoints v1 requerem autenticação via **Bearer Token JWT**.
 """,
     swagger_ui_parameters={"persistAuthorization": True},
+    openapi_tags=tags_metadata,
+    servers=servers,
 )
 
+# Security scheme para JWT Bearer
+from fastapi.openapi.utils import get_openapi
+
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+        tags=tags_metadata,
+        servers=servers,
+    )
+    
+    # Adicionar HTTPBearer security scheme
+    openapi_schema["components"]["securitySchemes"] = {
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "JWT do usuário do Supabase. Obtenha via login ou geração de token."
+        }
+    }
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
+
+# Middleware Request-ID
+app.add_middleware(RequestIDMiddleware)
+
+# CORS com configuração do settings
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Montar router v1 com prefix configurável
+app.include_router(v1_processos_router, prefix=settings.API_BASE)
 
 # -------------------------------------------------------
 # Conexão ao banco (Supabase/Postgres)
@@ -701,7 +796,7 @@ def list_users():
         raise HTTPException(status_code=500, detail="Erro ao consultar usuários")
 
 
-@app.get("/pessoas", response_model=list[PessoaResponse], tags=["pessoas"], summary="Listar pessoas")
+@app.get("/pessoas", response_model=list[PessoaResponse], tags=["Pessoas"], summary="Listar pessoas")
 def list_pessoas(skip: int = 0, limit: int = 100):
     """Lista pessoas cadastradas no sistema com suporte a paginação.
     
@@ -733,7 +828,7 @@ def list_pessoas(skip: int = 0, limit: int = 100):
             detail=f"Erro ao consultar pessoas: {str(e)}"
         )
 
-@app.get("/pessoas/cpf/{cpf}", response_model=PessoaResponse, tags=["pessoas"], summary="Buscar pessoa por CPF")
+@app.get("/pessoas/cpf/{cpf}", response_model=PessoaResponse, tags=["Pessoas"], summary="Buscar pessoa por CPF")
 def get_pessoa_by_cpf(cpf: str):
     """Busca uma pessoa específica pelo CPF.
     O CPF pode ser informado com ou sem máscara (ex: '123.456.789-00' ou '12345678900').
@@ -772,7 +867,7 @@ def get_pessoa_by_cpf(cpf: str):
             detail="Erro ao consultar pessoa"
         )
 
-@app.get("/pessoas/cnpj/{cnpj}", response_model=PessoaResponse, tags=["pessoas"], summary="Buscar pessoa por CNPJ")
+@app.get("/pessoas/cnpj/{cnpj}", response_model=PessoaResponse, tags=["Pessoas"], summary="Buscar pessoa por CNPJ")
 def get_pessoa_by_cnpj(cnpj: str):
     """Busca uma pessoa específica pelo CNPJ.
     O CNPJ pode ser informado com ou sem máscara (ex: '12.345.678/0001-90' ou '12345678000190').
@@ -843,7 +938,7 @@ def list_imoveis(skip: int = 0, limit: int = 100):
             detail=f"Erro ao consultar imóveis: {str(e)}"
         )
 
-@app.get("/car", response_model=list[CarResponse], tags=["car"], summary="Listar CARs")
+@app.get("/car", response_model=list[CarResponse], tags=["CAR"], summary="Listar CARs")
 def list_car(skip: int = 0, limit: int = 100):
     """Lista CARs (Cadastro Ambiental Rural) cadastrados no sistema.
     
@@ -875,7 +970,7 @@ def list_car(skip: int = 0, limit: int = 100):
             detail=f"Erro ao consultar CARs: {str(e)}"
         )
 
-@app.get("/pessoas/juridicas", response_model=list[PessoaResponse], tags=["pessoas"], summary="Listar pessoas jurídicas ativas")
+@app.get("/pessoas/juridicas", response_model=list[PessoaResponse], tags=["Pessoas"], summary="Listar pessoas jurídicas ativas")
 def list_pessoas_juridicas():
     """Lista todas as pessoas jurídicas ativas cadastradas."""
     try:
@@ -917,7 +1012,7 @@ def list_pessoas_juridicas():
             detail={"message": "Erro ao listar pessoas jurídicas", "error": str(e)}
         )
 
-@app.post("/blockchain/register", response_model=BlockchainRegisterResponse, tags=["blockchain"], 
+@app.post("/blockchain/register", response_model=BlockchainRegisterResponse, tags=["Blockchain"], 
           summary="Registrar dados no blockchain Continuus")
 async def register_blockchain(payload: BlockchainRegisterRequest):
     """
@@ -1025,7 +1120,7 @@ async def register_blockchain(payload: BlockchainRegisterRequest):
             error=error_detail
         )
 
-@app.post("/auth/login", response_model=LoginResponse, tags=["auth"], summary="Autenticar usuário (CPF)")
+@app.post("/auth/login", response_model=LoginResponse, tags=["Auth"], summary="Autenticar usuário (CPF)")
 def login(body: LoginBody):
     """Autentica usuário no Supabase:
     - Usa x_usr (login, password)
