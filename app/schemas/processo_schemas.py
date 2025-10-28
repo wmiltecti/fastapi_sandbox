@@ -30,6 +30,14 @@ class DadosGeraisUpsert(BaseModel):
     
     processo_id: str = Field(..., description="ID do processo relacionado")
     
+    # Protocolos e Identificação
+    numero_processo_externo: Optional[str] = Field(
+        None, 
+        description="Número/protocolo do processo informado pelo usuário (opcional)"
+    )
+    # Nota: protocolo_interno é gerado automaticamente pelo banco
+    # Nota: numero_processo_oficial é reservado para uso futuro (definição da analista)
+    
     # Tipo de pessoa
     tipo_pessoa: Optional[Literal["PF", "PJ"]] = Field(
         None,
@@ -63,7 +71,8 @@ class DadosGeraisUpsert(BaseModel):
         json_schema_extra={
             "examples": [
                 {
-                    "processo_id": "proc_123",
+                    "processo_id": "550e8400-e29b-41d4-a716-446655440000",
+                    "numero_processo_externo": "PROC-2025-001",
                     "tipo_pessoa": "PF",
                     "cpf": "123.456.789-00",
                     "potencial_poluidor": "baixo",
@@ -72,7 +81,8 @@ class DadosGeraisUpsert(BaseModel):
                     "contato_telefone": "(11) 98765-4321"
                 },
                 {
-                    "processo_id": "proc_456",
+                    "processo_id": "550e8400-e29b-41d4-a716-446655440001",
+                    "numero_processo_externo": "PROC-2025-002",
                     "tipo_pessoa": "PJ",
                     "cnpj": "12.345.678/0001-90",
                     "razao_social": "Empresa Exemplo LTDA",
@@ -148,3 +158,62 @@ class WizardStatus(BaseModel):
             }
         }
     )
+
+
+class DadosGeraisResponse(BaseModel):
+    """Schema de resposta para dados gerais (inclui protocolos gerados)."""
+    
+    id: str = Field(..., description="UUID do registro")
+    processo_id: str = Field(..., description="ID do processo relacionado")
+    
+    # Protocolos
+    protocolo_interno: Optional[str] = Field(
+        None, 
+        description="Protocolo gerado automaticamente (formato: YYYY/NNNNNN)"
+    )
+    numero_processo_externo: Optional[str] = Field(
+        None,
+        description="Número do processo informado pelo usuário"
+    )
+    numero_processo_oficial: Optional[str] = Field(
+        None,
+        description="Número oficial do processo (reservado)"
+    )
+    
+    # Demais campos
+    tipo_pessoa: Optional[str] = None
+    cpf: Optional[str] = None
+    cnpj: Optional[str] = None
+    razao_social: Optional[str] = None
+    nome_fantasia: Optional[str] = None
+    porte: Optional[str] = None
+    potencial_poluidor: Optional[str] = None
+    descricao_resumo: Optional[str] = None
+    contato_email: Optional[str] = None
+    contato_telefone: Optional[str] = None
+    
+    created_at: Optional[str] = Field(None, description="Data de criação")
+    updated_at: Optional[str] = Field(None, description="Data de atualização")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "id": "550e8400-e29b-41d4-a716-446655440000",
+                "processo_id": "672bd103-d854-4a33-8f11-de771c9a45be",
+                "protocolo_interno": "2025/000001",
+                "numero_processo_externo": "PROC-2025-001",
+                "numero_processo_oficial": None,
+                "tipo_pessoa": "PJ",
+                "cnpj": "12.345.678/0001-90",
+                "razao_social": "Empresa Exemplo LTDA",
+                "nome_fantasia": "Exemplo Corp",
+                "porte": "ME",
+                "potencial_poluidor": "médio",
+                "contato_email": "empresa@exemplo.com",
+                "contato_telefone": "(11) 3333-4444",
+                "created_at": "2025-10-28T10:30:00Z",
+                "updated_at": "2025-10-28T10:30:00Z"
+            }
+        }
+    )
+

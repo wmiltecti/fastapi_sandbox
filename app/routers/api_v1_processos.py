@@ -10,6 +10,7 @@ from app.supabase_proxy import base_headers, admin_headers, rest_post, rest_patc
 from app.schemas.processo_schemas import (
     ProcessoCreate,
     DadosGeraisUpsert,
+    DadosGeraisResponse,
     LocalizacaoCreate,
     WizardStatus
 )
@@ -101,12 +102,17 @@ async def create_processo(
 @router.put(
     "/{processo_id}/dados-gerais",
     status_code=status.HTTP_200_OK,
+    response_model=DadosGeraisResponse,
     summary="Upsert dados gerais do processo",
     description="""
     Insere ou atualiza dados gerais do processo (relação 1:1).
     
     Utiliza resolução 'merge-duplicates' para atualizar registro existente
     caso já exista dados gerais para o processo_id fornecido.
+    
+    **Protocolo Interno:** Gerado automaticamente no INSERT (formato YYYY/NNNNNN).
+    **Número Processo Externo:** Pode ser fornecido pelo usuário (campo opcional).
+    **Número Processo Oficial:** Reservado para definição futura com analista.
     
     Suporta tanto Pessoa Física (PF) quanto Jurídica (PJ):
     - **PF:** Informar tipo_pessoa="PF" e cpf
@@ -119,7 +125,8 @@ async def create_processo(
         "tipo_pessoa": "PF",
         "cpf": "123.456.789-00",
         "potencial_poluidor": "baixo",
-        "contato_email": "pessoa@exemplo.com"
+        "contato_email": "pessoa@exemplo.com",
+        "numero_processo_externo": "PROC-2025-001"
     }
     ```
     
@@ -131,9 +138,12 @@ async def create_processo(
         "cnpj": "12.345.678/0001-90",
         "razao_social": "Empresa LTDA",
         "porte": "ME",
-        "contato_email": "empresa@exemplo.com"
+        "contato_email": "empresa@exemplo.com",
+        "numero_processo_externo": "PROC-2025-002"
     }
     ```
+    
+    **Retorna:** Objeto completo incluindo protocolo_interno gerado automaticamente.
     """
 )
 async def upsert_dados_gerais(
