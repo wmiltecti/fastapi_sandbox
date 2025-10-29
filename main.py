@@ -123,7 +123,7 @@ tags_metadata = [
 servers = [
     {
         "url": "/",  # usa a origem atual (Render, local, etc.)
-        "description": "Base relativa ao host atual, evitar url fixa."
+        "description": "Base relativa ao host atual."
     }
 ]
 
