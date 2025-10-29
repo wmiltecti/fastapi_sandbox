@@ -238,12 +238,25 @@ PGSCHEMA = os.getenv("PGSCHEMA", "public")
 
 os.environ.setdefault("PGSSLMODE", "require")
 
-if not (PGHOST and PGPASSWORD):
-    raise RuntimeError("Defina PGHOST e PGPASSWORD no ambiente (.env).")
+# Inicialização lazy do pool - só cria quando realmente necessário
+pool = None
 
-DSN = f"host={PGHOST} port={PGPORT} dbname={PGDATABASE} user={PGUSER} password={PGPASSWORD} sslmode={os.getenv('PGSSLMODE','require')}"
-
-pool = ConnectionPool(conninfo=DSN, min_size=1, max_size=10, kwargs={"autocommit": True})
+def get_pool():
+    """Retorna pool de conexões, criando se necessário."""
+    global pool
+    if pool is None:
+        if not (PGHOST and PGPASSWORD):
+            raise RuntimeError("Defina PGHOST e PGPASSWORD no ambiente (.env).")
+        
+        DSN = f"host={PGHOST} port={PGPORT} dbname={PGDATABASE} user={PGUSER} password={PGPASSWORD} sslmode={os.getenv('PGSSLMODE','require')}"
+        
+        try:
+            pool = ConnectionPool(conninfo=DSN, min_size=1, max_size=10, kwargs={"autocommit": True})
+            logger.info("Pool de conexões criado com sucesso")
+        except Exception as e:
+            logger.error(f"Erro ao criar pool de conexões: {e}")
+            raise
+    return pool
 
 # -------------------------------------------------------
 # Modelos de dados (Swagger)
@@ -797,7 +810,7 @@ def db_check():
     Útil para testar se as variáveis de ambiente e a rede estão corretas no Render.
     """
     try:
-        with pool.connection() as conn:
+        with get_pool().connection() as conn:
             cur = conn.cursor()
             cur.execute("SELECT 1")
             row = cur.fetchone()
@@ -808,13 +821,25 @@ def db_check():
         logger.exception("DB check failed")
         raise HTTPException(status_code=500, detail={"message": "DB connection failed", "error": str(e)}) from e
 
+@app.get("/config-check", tags=["infra"])
+def config_check():
+    """Verifica se as configurações do Supabase estão carregadas."""
+    return {
+        "USE_SUPABASE_REST": settings.USE_SUPABASE_REST,
+        "SUPABASE_URL": settings.SUPABASE_URL[:30] + "..." if settings.SUPABASE_URL else None,
+        "SUPABASE_REST_URL": settings.SUPABASE_REST_URL[:30] + "..." if settings.SUPABASE_REST_URL else None,
+        "SUPABASE_ANON_KEY": "***" if settings.SUPABASE_ANON_KEY else None,
+        "SUPABASE_SERVICE_ROLE": "***" if settings.SUPABASE_SERVICE_ROLE else None,
+        "API_BASE": settings.API_BASE
+    }
+
 @legacy_router.get("/users", response_model=list[UserResponse], tags=["users"], summary="Listar usuários")
 def list_users():
     """Lista todos os usuários cadastrados no sistema.
     Retorna informações básicas como id, nome, login e status.
     """
     try:
-        with pool.connection() as conn:
+        with get_pool().connection() as conn:
             cur = conn.cursor()
             logger.info("Executando consulta de usuários...")
             cur.execute(SQL_LIST_USERS)
@@ -849,7 +874,7 @@ def list_pessoas(skip: int = 0, limit: int = 100):
         limit = 100  # Limita o máximo de registros por questões de performance
         
     try:
-        with pool.connection() as conn:
+        with get_pool().connection() as conn:
             cur = conn.cursor()
             # Query base com paginação como parâmetros
             paginated_query = SQL_LIST_PESSOAS.replace(';', '') + " LIMIT %(limit)s OFFSET %(offset)s;"
@@ -881,7 +906,7 @@ def get_pessoa_by_cpf(cpf: str):
         )
     
     try:
-        with pool.connection() as conn:
+        with get_pool().connection() as conn:
             cur = conn.cursor()
             cur.execute(SQL_GET_PESSOA_BY_CPF, {"cpf_digits": cpf_digits})
             row = cur.fetchone()
@@ -920,7 +945,7 @@ def get_pessoa_by_cnpj(cnpj: str):
         )
     
     try:
-        with pool.connection() as conn:
+        with get_pool().connection() as conn:
             cur = conn.cursor()
             cur.execute(SQL_GET_PESSOA_BY_CNPJ, {"cnpj_digits": cnpj_digits})
             row = cur.fetchone()
@@ -959,7 +984,7 @@ def list_imoveis(skip: int = 0, limit: int = 100):
         limit = 100  # Limita o máximo de registros por questões de performance
         
     try:
-        with pool.connection() as conn:
+        with get_pool().connection() as conn:
             cur = conn.cursor()
             # Query base com paginação como parâmetros
             paginated_query = SQL_LIST_IMOVEIS.replace(';', '') + " LIMIT %(limit)s OFFSET %(offset)s;"
@@ -991,7 +1016,7 @@ def list_car(skip: int = 0, limit: int = 100):
         limit = 100  # Limita o máximo de registros por questões de performance
         
     try:
-        with pool.connection() as conn:
+        with get_pool().connection() as conn:
             cur = conn.cursor()
             # Query base com paginação como parâmetros
             paginated_query = SQL_LIST_CAR.replace(';', '') + " LIMIT %(limit)s OFFSET %(offset)s;"
@@ -1012,7 +1037,7 @@ def list_car(skip: int = 0, limit: int = 100):
 def list_pessoas_juridicas():
     """Lista todas as pessoas jurídicas ativas cadastradas."""
     try:
-        with pool.connection() as conn:
+        with get_pool().connection() as conn:
             cur = conn.cursor()
             cur.execute("""
                 SELECT 
@@ -1179,7 +1204,7 @@ def login(body: LoginBody):
 
     # --- autenticação em x_usr
     try:
-        with pool.connection() as conn:
+        with get_pool().connection() as conn:
             cur = conn.cursor()
             cur.execute(SQL_AUTH_X_USR, {"login_digits": login_digits})
             row = cur.fetchone()
@@ -1205,7 +1230,7 @@ def login(body: LoginBody):
 
     # --- nome para exibição em f_pessoa
     try:
-        with pool.connection() as conn:
+        with get_pool().connection() as conn:
             cur = conn.cursor()
             cur.execute(SQL_PERSON_NAME, {"user_id": user_id})
             row = cur.fetchone()
