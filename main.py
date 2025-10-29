@@ -150,6 +150,9 @@ Todos os endpoints v1 requerem autenticação via **Bearer Token JWT**.
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://localhost:8000",
+    "https://fastapi-sandbox.onrender.com",
 ]
 
 app.add_middleware(
