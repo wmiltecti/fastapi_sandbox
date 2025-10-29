@@ -147,18 +147,10 @@ Todos os endpoints v1 requerem autenticação via **Bearer Token JWT**.
     servers=servers,
 )
 
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-    "http://localhost:8000",
-    "https://fastapi-sandbox.onrender.com",
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,          # ou ["*"] apenas em dev
-    allow_credentials=True,         # se você usa cookies/autenticação com credenciais
+    allow_origins=["*"],            # Permite qualquer origem (desenvolvimento e produção)
+    allow_credentials=False,        # IMPORTANTE: deve ser False quando allow_origins=["*"]
     allow_methods=["*"],            # ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
     allow_headers=["*"],            # precisa incluir "Authorization" se você enviar Bearer
 )
