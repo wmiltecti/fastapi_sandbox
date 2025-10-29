@@ -1241,4 +1241,6 @@ app.include_router(legacy_router, prefix=settings.API_BASE)
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", "8000"))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+    # reload=True apenas em ambiente de desenvolvimento local
+    # Em produção (Render), o uvicorn é executado diretamente via render.yaml
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
