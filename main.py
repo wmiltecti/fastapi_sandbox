@@ -122,12 +122,8 @@ tags_metadata = [
 # Servidores para documentação
 servers = [
     {
-        "url": "http://localhost:8000",
-        "description": "Ambiente de desenvolvimento local"
-    },
-    {
-        "url": "https://fastapi-sandbox.onrender.com",
-        "description": "Ambiente de produção (Render)"
+        "url": "/",  # usa a origem atual (Render, local, etc.)
+        "description": "Base relativa ao host atual"
     }
 ]
 
@@ -146,6 +142,16 @@ Todos os endpoints v1 requerem autenticação via **Bearer Token JWT**.
     openapi_tags=tags_metadata,
     servers=servers,
 )
+
+# Adicionar evento de lifecycle para debug
+@app.on_event("startup")
+async def startup_event():
+    logger.info("🚀 Aplicação iniciada com sucesso!")
+    logger.info(f"USE_SUPABASE_REST: {settings.USE_SUPABASE_REST}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.warning("⚠️  Shutdown event triggered - aplicação encerrando!")
 
 from fastapi import Response
 
