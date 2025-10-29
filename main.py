@@ -147,13 +147,18 @@ Todos os endpoints v1 requerem autenticação via **Bearer Token JWT**.
     servers=servers,
 )
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],            # Permite qualquer origem (desenvolvimento e produção)
-    allow_credentials=False,        # IMPORTANTE: deve ser False quando allow_origins=["*"]
-    allow_methods=["*"],            # ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
-    allow_headers=["*"],            # precisa incluir "Authorization" se você enviar Bearer
-)
+from fastapi import Response
+
+# Aceitar HEAD no root para o health check do Render
+@app.head("/")
+def root_head():
+    return Response(status_code=200)
+
+# HEAD no health também
+@app.head("/health")
+def health_head():
+    return Response(status_code=200)
+
 # Security scheme para JWT Bearer
 from fastapi.openapi.utils import get_openapi
 
@@ -186,16 +191,16 @@ def custom_openapi():
 app.openapi = custom_openapi
 
 # Middleware Request-ID
-app.add_middleware(RequestIDMiddleware)
+#app.add_middleware(RequestIDMiddleware)
 
 # CORS com configuração do settings
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+#app.add_middleware(
+#    CORSMiddleware,
+#    allow_origins=settings.CORS_ORIGINS,
+#    allow_credentials=True,
+#    allow_methods=["*"],
+#    allow_headers=["*"],
+#)
 
 # --- CORS (único) ---
 from fastapi.middleware.cors import CORSMiddleware
