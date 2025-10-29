@@ -23,24 +23,6 @@ class Settings(BaseSettings):
     SUPABASE_ANON_KEY: str = Field(default="", description="Anon key do Supabase")
     SUPABASE_SERVICE_ROLE: str = Field(default="", description="Service role key do Supabase")
     
-    # CORS Configuration (will be parsed from CSV string)
-    CORS_ORIGINS: Union[str, List[str]] = Field(
-        default="*",
-        description="Lista de origens permitidas para CORS (separadas por vírgula no .env)"
-    )
-    
-    @field_validator('CORS_ORIGINS', mode='before')
-    @classmethod
-    def parse_cors_origins(cls, v: Union[str, List[str]]) -> List[str]:
-        """Parse CORS_ORIGINS de CSV para lista."""
-        if isinstance(v, str):
-            # Se for string única "*", retornar como lista
-            if v.strip() == "*":
-                return ["*"]
-            # Caso contrário, split por vírgula
-            return [origin.strip() for origin in v.split(",") if origin.strip()]
-        return v
-    
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
