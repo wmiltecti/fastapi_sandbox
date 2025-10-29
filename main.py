@@ -143,6 +143,18 @@ Todos os endpoints v1 requerem autenticação via **Bearer Token JWT**.
     servers=servers,
 )
 
+origins = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,          # ou ["*"] apenas em dev
+    allow_credentials=True,         # se você usa cookies/autenticação com credenciais
+    allow_methods=["*"],            # ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+    allow_headers=["*"],            # precisa incluir "Authorization" se você enviar Bearer
+)
 # Security scheme para JWT Bearer
 from fastapi.openapi.utils import get_openapi
 
@@ -185,6 +197,32 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- CORS (único) ---
+from fastapi.middleware.cors import CORSMiddleware
+import os
+
+IS_DEV = os.getenv("ENV", "dev").lower() in ("dev", "development", "local")
+
+if IS_DEV:
+    # Em desenvolvimento: liberar geral (sem credenciais)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],       # ok pq não usaremos credenciais
+        allow_credentials=False,   # IMPORTANTÍSSIMO p/ permitir "*"
+        allow_methods=["*"],
+        allow_headers=["*"],       # inclui Authorization
+    )
+else:
+    # Produção/Homolog: orígens explícitas (edite settings.CORS_ORIGINS)
+    # Ex.: settings.CORS_ORIGINS = ["https://seu-front.com", "https://homolog.seu-front.com"]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.CORS_ORIGINS or [],
+        allow_credentials=True,    # se precisar enviar cookies
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 # Montar router v1 com prefix configurável
 app.include_router(v1_processos_router, prefix=settings.API_BASE)
