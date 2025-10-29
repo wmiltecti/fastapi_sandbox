@@ -80,6 +80,10 @@ from app.config import settings
 from app.routers.api_v1_processos import router as v1_processos_router
 from app.middleware.request_id import RequestIDMiddleware
 
+# Criar router para rotas legadas (auth, pessoas, car, blockchain, users)
+from fastapi import APIRouter
+legacy_router = APIRouter()
+
 # Tags metadata para organização do Swagger
 tags_metadata = [
     {
@@ -808,7 +812,8 @@ def db_check():
     except Exception as e:
         logger.exception("DB check failed")
         raise HTTPException(status_code=500, detail={"message": "DB connection failed", "error": str(e)}) from e
-@app.get("/users", response_model=list[UserResponse], tags=["users"], summary="Listar usuários")
+
+@legacy_router.get("/users", response_model=list[UserResponse], tags=["users"], summary="Listar usuários")
 def list_users():
     """Lista todos os usuários cadastrados no sistema.
     Retorna informações básicas como id, nome, login e status.
@@ -834,7 +839,7 @@ def list_users():
         raise HTTPException(status_code=500, detail="Erro ao consultar usuários")
 
 
-@app.get("/pessoas", response_model=list[PessoaResponse], tags=["Pessoas"], summary="Listar pessoas")
+@legacy_router.get("/pessoas", response_model=list[PessoaResponse], tags=["Pessoas"], summary="Listar pessoas")
 def list_pessoas(skip: int = 0, limit: int = 100):
     """Lista pessoas cadastradas no sistema com suporte a paginação.
     
@@ -866,7 +871,7 @@ def list_pessoas(skip: int = 0, limit: int = 100):
             detail=f"Erro ao consultar pessoas: {str(e)}"
         )
 
-@app.get("/pessoas/cpf/{cpf}", response_model=PessoaResponse, tags=["Pessoas"], summary="Buscar pessoa por CPF")
+@legacy_router.get("/pessoas/cpf/{cpf}", response_model=PessoaResponse, tags=["Pessoas"], summary="Buscar pessoa por CPF")
 def get_pessoa_by_cpf(cpf: str):
     """Busca uma pessoa específica pelo CPF.
     O CPF pode ser informado com ou sem máscara (ex: '123.456.789-00' ou '12345678900').
@@ -905,7 +910,7 @@ def get_pessoa_by_cpf(cpf: str):
             detail="Erro ao consultar pessoa"
         )
 
-@app.get("/pessoas/cnpj/{cnpj}", response_model=PessoaResponse, tags=["Pessoas"], summary="Buscar pessoa por CNPJ")
+@legacy_router.get("/pessoas/cnpj/{cnpj}", response_model=PessoaResponse, tags=["Pessoas"], summary="Buscar pessoa por CNPJ")
 def get_pessoa_by_cnpj(cnpj: str):
     """Busca uma pessoa específica pelo CNPJ.
     O CNPJ pode ser informado com ou sem máscara (ex: '12.345.678/0001-90' ou '12345678000190').
@@ -944,7 +949,7 @@ def get_pessoa_by_cnpj(cnpj: str):
             detail="Erro ao consultar pessoa"
         )
 
-@app.get("/imoveis", response_model=list[ImovelResponse], tags=["imoveis"], summary="Listar imóveis")
+@legacy_router.get("/imoveis", response_model=list[ImovelResponse], tags=["imoveis"], summary="Listar imóveis")
 def list_imoveis(skip: int = 0, limit: int = 100):
     """Lista imóveis cadastrados no sistema.
     
@@ -976,7 +981,7 @@ def list_imoveis(skip: int = 0, limit: int = 100):
             detail=f"Erro ao consultar imóveis: {str(e)}"
         )
 
-@app.get("/car", response_model=list[CarResponse], tags=["CAR"], summary="Listar CARs")
+@legacy_router.get("/car", response_model=list[CarResponse], tags=["CAR"], summary="Listar CARs")
 def list_car(skip: int = 0, limit: int = 100):
     """Lista CARs (Cadastro Ambiental Rural) cadastrados no sistema.
     
@@ -1008,7 +1013,7 @@ def list_car(skip: int = 0, limit: int = 100):
             detail=f"Erro ao consultar CARs: {str(e)}"
         )
 
-@app.get("/pessoas/juridicas", response_model=list[PessoaResponse], tags=["Pessoas"], summary="Listar pessoas jurídicas ativas")
+@legacy_router.get("/pessoas/juridicas", response_model=list[PessoaResponse], tags=["Pessoas"], summary="Listar pessoas jurídicas ativas")
 def list_pessoas_juridicas():
     """Lista todas as pessoas jurídicas ativas cadastradas."""
     try:
@@ -1050,7 +1055,7 @@ def list_pessoas_juridicas():
             detail={"message": "Erro ao listar pessoas jurídicas", "error": str(e)}
         )
 
-@app.post("/blockchain/register", response_model=BlockchainRegisterResponse, tags=["Blockchain"], 
+@legacy_router.post("/blockchain/register", response_model=BlockchainRegisterResponse, tags=["Blockchain"], 
           summary="Registrar dados no blockchain Continuus")
 async def register_blockchain(payload: BlockchainRegisterRequest):
     """
@@ -1158,7 +1163,7 @@ async def register_blockchain(payload: BlockchainRegisterRequest):
             error=error_detail
         )
 
-@app.post("/auth/login", response_model=LoginResponse, tags=["Auth"], summary="Autenticar usuário (CPF)")
+@legacy_router.post("/auth/login", response_model=LoginResponse, tags=["Auth"], summary="Autenticar usuário (CPF)")
 def login(body: LoginBody):
     """Autentica usuário no Supabase:
     - Usa x_usr (login, password)
@@ -1227,6 +1232,13 @@ def login(body: LoginBody):
         "nome": display_name,
         "userId": str(user_id)
     }
+
+# -------------------------------------------------------
+# Montar routers
+# -------------------------------------------------------
+# Montar router legado com prefix configurável (auth, pessoas, car, blockchain, users)
+# IMPORTANTE: Deve ser incluído DEPOIS das definições das rotas @legacy_router
+app.include_router(legacy_router, prefix=settings.API_BASE)
 
 # -------------------------------------------------------
 # Execução local
