@@ -171,3 +171,47 @@ async def rest_get(path: str, headers: Dict[str, str]) -> Any:
                 status_code=503,
                 detail=f"Erro ao comunicar com Supabase: {str(e)}"
             )
+
+
+async def rest_delete(path: str, headers: Dict[str, str]) -> Any:
+    """
+    Executa DELETE no Supabase PostgREST.
+    
+    Args:
+        path: Caminho relativo com query string (ex: "licenciamento.processo?id=eq.123")
+        headers: Headers de autenticação
+    
+    Returns:
+        Response JSON do Supabase (vazio em caso de sucesso)
+        
+    Raises:
+        HTTPException: Se status >= 400
+    """
+    url = f"{settings.SUPABASE_REST_URL}/{path}"
+    
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            response = await client.delete(url, headers=headers)
+            
+            if response.status_code >= 400:
+                try:
+                    error_detail = response.json()
+                except Exception:
+                    error_detail = response.text
+                
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=error_detail
+                )
+            
+            # DELETE pode retornar vazio ou JSON dependendo do Prefer header
+            try:
+                return response.json()
+            except Exception:
+                return None
+            
+        except httpx.RequestError as e:
+            raise HTTPException(
+                status_code=503,
+                detail=f"Erro ao comunicar com Supabase: {str(e)}"
+            )

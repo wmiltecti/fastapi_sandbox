@@ -63,6 +63,60 @@ class DadosGeraisUpsert(BaseModel):
         description="Descrição resumida da atividade/empreendimento"
     )
     
+    # Características do Empreendimento (Etapa 1 do Formulário)
+    area_total: Optional[float] = Field(
+        None,
+        description="Área total do empreendimento em m²",
+        ge=0
+    )
+    cnae_codigo: Optional[str] = Field(
+        None,
+        description="Código CNAE (ex: 1011-2/01)"
+    )
+    cnae_descricao: Optional[str] = Field(
+        None,
+        description="Descrição da atividade CNAE"
+    )
+    
+    # Licença Anterior
+    possui_licenca_anterior: Optional[bool] = Field(
+        None,
+        description="Indica se possui licença ambiental anterior"
+    )
+    tipo_licenca_anterior: Optional[str] = Field(
+        None,
+        description="Tipo de licença anterior (LO, LP, LI, etc)"
+    )
+    numero_licenca_anterior: Optional[str] = Field(
+        None,
+        description="Número da licença anterior"
+    )
+    ano_emissao_licenca: Optional[int] = Field(
+        None,
+        description="Ano de emissão da licença anterior",
+        ge=1900,
+        le=2100
+    )
+    validade_licenca: Optional[str] = Field(
+        None,
+        description="Data de validade da licença anterior (formato: YYYY-MM-DD)"
+    )
+    
+    # Informações Operacionais
+    numero_empregados: Optional[int] = Field(
+        None,
+        description="Número total de empregados",
+        ge=0
+    )
+    horario_funcionamento_inicio: Optional[str] = Field(
+        None,
+        description="Horário de início do funcionamento (formato: HH:MM)"
+    )
+    horario_funcionamento_fim: Optional[str] = Field(
+        None,
+        description="Horário de término do funcionamento (formato: HH:MM)"
+    )
+    
     # Contatos
     contato_email: Optional[EmailStr] = Field(None, description="Email de contato")
     contato_telefone: Optional[str] = Field(None, description="Telefone de contato")
@@ -71,25 +125,54 @@ class DadosGeraisUpsert(BaseModel):
         json_schema_extra={
             "examples": [
                 {
+                    # Pessoa Física - Exemplo completo
                     "processo_id": "550e8400-e29b-41d4-a716-446655440000",
                     "numero_processo_externo": "PROC-2025-001",
                     "tipo_pessoa": "PF",
                     "cpf": "123.456.789-00",
+                    "cnpj": None,
+                    "razao_social": None,
+                    "nome_fantasia": None,
+                    "porte": None,
                     "potencial_poluidor": "baixo",
                     "descricao_resumo": "Atividade agrícola de pequeno porte",
+                    "area_total": 1500.5,
+                    "cnae_codigo": "0111-3/01",
+                    "cnae_descricao": "Cultivo de cereais",
+                    "possui_licenca_anterior": False,
+                    "tipo_licenca_anterior": None,
+                    "numero_licenca_anterior": None,
+                    "ano_emissao_licenca": None,
+                    "validade_licenca": None,
+                    "numero_empregados": 5,
+                    "horario_funcionamento_inicio": "06:00",
+                    "horario_funcionamento_fim": "18:00",
                     "contato_email": "contato@exemplo.com",
                     "contato_telefone": "(11) 98765-4321"
                 },
                 {
+                    # Pessoa Jurídica - Exemplo completo
                     "processo_id": "550e8400-e29b-41d4-a716-446655440001",
                     "numero_processo_externo": "PROC-2025-002",
                     "tipo_pessoa": "PJ",
+                    "cpf": None,
                     "cnpj": "12.345.678/0001-90",
                     "razao_social": "Empresa Exemplo LTDA",
                     "nome_fantasia": "Exemplo Corp",
                     "porte": "ME",
                     "potencial_poluidor": "médio",
-                    "descricao_resumo": "Indústria de transformação",
+                    "descricao_resumo": "Indústria de transformação - Frigorífico",
+                    "area_total": 5000.0,
+                    "cnae_codigo": "1011-2/01",
+                    "cnae_descricao": "Frigorífico - abate de bovinos",
+                    "possui_licenca_anterior": True,
+                    "tipo_licenca_anterior": "LO - Licença de Operação",
+                    "numero_licenca_anterior": "12345/2023",
+                    "ano_emissao_licenca": 2023,
+                    "validade_licenca": "2025-12-31",
+                    "numero_empregados": 150,
+                    "horario_funcionamento_inicio": "07:00",
+                    "horario_funcionamento_fim": "17:00",
                     "contato_email": "empresa@exemplo.com",
                     "contato_telefone": "(11) 3333-4444"
                 }
@@ -192,6 +275,23 @@ class DadosGeraisResponse(BaseModel):
     contato_email: Optional[str] = None
     contato_telefone: Optional[str] = None
     
+    # Características do Empreendimento (Etapa 1 do Formulário)
+    area_total: Optional[float] = None
+    cnae_codigo: Optional[str] = None
+    cnae_descricao: Optional[str] = None
+    
+    # Licença Anterior
+    possui_licenca_anterior: Optional[bool] = None
+    tipo_licenca_anterior: Optional[str] = None
+    numero_licenca_anterior: Optional[str] = None
+    ano_emissao_licenca: Optional[int] = None
+    validade_licenca: Optional[str] = None
+    
+    # Informações Operacionais
+    numero_empregados: Optional[int] = None
+    horario_funcionamento_inicio: Optional[str] = None
+    horario_funcionamento_fim: Optional[str] = None
+    
     created_at: Optional[str] = Field(None, description="Data de criação")
     updated_at: Optional[str] = Field(None, description="Data de atualização")
     
@@ -209,6 +309,17 @@ class DadosGeraisResponse(BaseModel):
                 "nome_fantasia": "Exemplo Corp",
                 "porte": "ME",
                 "potencial_poluidor": "médio",
+                "area_total": 5000.0,
+                "cnae_codigo": "1011-2/01",
+                "cnae_descricao": "Frigorífico - abate de bovinos",
+                "possui_licenca_anterior": True,
+                "tipo_licenca_anterior": "LO - Licença de Operação",
+                "numero_licenca_anterior": "12345/2023",
+                "ano_emissao_licenca": 2023,
+                "validade_licenca": "2025-12-31",
+                "numero_empregados": 150,
+                "horario_funcionamento_inicio": "07:00",
+                "horario_funcionamento_fim": "17:00",
                 "contato_email": "empresa@exemplo.com",
                 "contato_telefone": "(11) 3333-4444",
                 "created_at": "2025-10-28T10:30:00Z",
