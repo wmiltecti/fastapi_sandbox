@@ -78,6 +78,7 @@ logger = logging.getLogger("fastapi_sandbox")
 # Importar configurações e router v1
 from app.config import settings
 from app.routers.api_v1_processos import router as v1_processos_router
+from app.routers.api_v1_uso_recursos_energia import router as v1_uso_recursos_energia_router
 from app.middleware.request_id import RequestIDMiddleware
 
 # Criar router para rotas legadas (auth, pessoas, car, blockchain, users)
@@ -99,6 +100,23 @@ tags_metadata = [
         3. **POST /api/v1/processos/{id}/localizacoes** - Adicionar localizações
         4. **GET /api/v1/processos/{id}/wizard-status** - Verificar status
         5. **POST /api/v1/processos/{id}/submit** - Submeter para revisão
+        """,
+    },
+    {
+        "name": "v1-uso-recursos-energia",
+        "description": """
+        **API v1** - Gerenciamento de Uso de Recursos e Energia (Etapa 2 do Formulário).
+        
+        Endpoints para cadastrar e consultar dados de:
+        - Uso de Lenha
+        - Caldeira
+        - Fornos
+        - Combustíveis e Energia
+        
+        Workflow típico:
+        1. **POST /api/v1/uso-recursos-energia** - Criar/atualizar dados completos
+        2. **GET /api/v1/uso-recursos-energia/{processo_id}** - Consultar dados
+        3. **DELETE /api/v1/uso-recursos-energia/{processo_id}** - Remover dados
         """,
     },
     {
@@ -236,6 +254,7 @@ else:
 
 # Montar router v1 com prefix configurável
 app.include_router(v1_processos_router, prefix=settings.API_BASE)
+app.include_router(v1_uso_recursos_energia_router, prefix=settings.API_BASE)
 
 # -------------------------------------------------------
 # Conexão ao banco (Supabase/Postgres)
