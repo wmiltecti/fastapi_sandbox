@@ -80,6 +80,7 @@ from app.config import settings
 from app.routers.api_v1_processos import router as v1_processos_router
 from app.routers.api_v1_uso_recursos_energia import router as v1_uso_recursos_energia_router
 from app.routers.api_v1_consumo_de_agua import router as v1_consumo_de_agua_router
+from app.routers.api_v1_pessoas import router as v1_pessoas_router
 from app.middleware.request_id import RequestIDMiddleware
 
 # Criar router para rotas legadas (auth, pessoas, car, blockchain, users)
@@ -134,6 +135,26 @@ tags_metadata = [
         1. **POST /api/v1/consumo-de-agua** - Criar/atualizar dados completos
         2. **GET /api/v1/consumo-de-agua/{processo_id}** - Consultar dados
         3. **DELETE /api/v1/consumo-de-agua/{processo_id}** - Remover dados
+        """,
+    },
+    {
+        "name": "v1-pessoas",
+        "description": """
+        **API v1** - Gerenciamento de Pessoas (Físicas, Jurídicas e Estrangeiras).
+        
+        Endpoints CRUD completos para cadastro de pessoas:
+        - Pessoa Física (CPF)
+        - Pessoa Jurídica (CNPJ)
+        - Pessoa Estrangeira (RNE/RNM)
+        
+        Workflow típico:
+        1. **POST /api/v1/pessoas/fisica** - Cadastrar pessoa física
+        2. **POST /api/v1/pessoas/juridica** - Cadastrar pessoa jurídica
+        3. **POST /api/v1/pessoas/estrangeira** - Cadastrar pessoa estrangeira
+        4. **GET /api/v1/pessoas** - Listar pessoas (com filtros)
+        5. **GET /api/v1/pessoas/{id}** - Buscar pessoa por ID
+        6. **PUT /api/v1/pessoas/{id}** - Atualizar pessoa
+        7. **DELETE /api/v1/pessoas/{id}** - Deletar pessoa
         """,
     },
     {
@@ -273,6 +294,7 @@ else:
 app.include_router(v1_processos_router, prefix=settings.API_BASE)
 app.include_router(v1_uso_recursos_energia_router, prefix=settings.API_BASE)
 app.include_router(v1_consumo_de_agua_router, prefix=settings.API_BASE)
+app.include_router(v1_pessoas_router, prefix=settings.API_BASE)
 
 # -------------------------------------------------------
 # Conexão ao banco (Supabase/Postgres)
